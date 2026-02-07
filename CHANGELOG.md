@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.3 - 2026-02-07
+- Print chunk summary previews and slide titles for better terminal visibility.
+
+## 0.6.2 - 2026-02-07
+- Interactive handling for slide title count mismatches: show titles, accept feedback, then auto-fix.
+
+## 0.6.1 - 2026-02-07
+- Interactive checkpoints now accept user feedback for titles/slides and include it in prompts.
+- Added resume support from `progress.json` via `--resume`.
+
+## 0.6.0 - 2026-02-07
+- Added interactive checkpoints to allow users to abort at key stages.
+- Added `--check-interval` for interactive prompting cadence.
+
+## 0.5.9 - 2026-02-07
+- Added `--retry-empty` to control retries for empty LLM outputs.
+
+## 0.5.8 - 2026-02-07
+- Retry empty LLM outputs for chunk summaries and prompt user to skip or quit.
+
+## 0.5.7 - 2026-02-07
+- Added `--name` to set a custom run directory name.
+
 ## 0.5.6 - 2026-02-07
 - Robust slide title generation: retry/fix and fallback padding when LLM returns the wrong count.
 

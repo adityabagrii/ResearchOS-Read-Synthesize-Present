@@ -25,7 +25,7 @@ except Exception:
     from pipeline import Pipeline, RunConfig
 
 logger = logging.getLogger("paper2ppt")
-VERSION = "0.5.6"
+VERSION = "0.6.3"
 
 
 def _requirements_path() -> Path | None:
@@ -90,6 +90,7 @@ def print_helper() -> None:
     print("  --with-speaker-notes   Generate speaker notes for each slide")
     print("  --skip-llm-sanity      Skip LLM sanity check")
     print("  --no-approve           Skip outline approval loop")
+    print("  --interactive          Prompt at checkpoints to allow aborting")
     print("")
     print("Full options:")
     print("  paper2ppt --help")
@@ -125,8 +126,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--slides", "-s", type=int, required=True, help="Number of slides to generate")
     p.add_argument("--bullets", "-b", type=int, required=True, help="Number of bullets per slide")
     p.add_argument("--query", "-q", default="", help="User query to guide the presentation theme")
+    p.add_argument("--name", "-n", default="", help="Custom run name for output directory")
     p.add_argument("--no-web-search", "-ws", action="store_true", help="Disable web search even if --query is provided")
     p.add_argument("--retry-slides", "-rs", type=int, default=3, help="Retry count for slide generation")
+    p.add_argument("--retry-empty", "-re", type=int, default=3, help="Retry count for empty LLM outputs")
+    p.add_argument("--interactive", "-I", action="store_true", help="Enable interactive checkpoints to allow aborting")
+    p.add_argument(
+        "--check-interval",
+        "-ci",
+        type=int,
+        default=5,
+        help="How often (in steps) to prompt during interactive runs",
+    )
+    p.add_argument("--resume", "-r", default="", help="Resume from a previous run directory or outputs directory")
     p.add_argument(
         "--root-dir",
         default=None,
@@ -246,15 +258,20 @@ def main() -> int:
     elif pdf_urls:
         paper_title = Path(pdf_urls[0].split("?")[0]).stem or "paper"
 
-    root_dir = args.root_dir or os.environ.get("PAPER2PPT_ROOT_DIR", "~/paper2ppt_runs")
-    run_root = Path(root_dir).expanduser().resolve()
-    run_name = _slugify(paper_title)
-    if args.query:
-        if len(arxiv_ids) + len(pdf_paths) > 1:
-            run_name = f"Q-{_query_summary(args.query)}-MultiSource"
-        else:
-            run_name = f"Q-{_query_summary(args.query)}-{run_name}"
-    run_dir = run_root / run_name
+    if args.resume:
+        resume_path = Path(args.resume).expanduser().resolve()
+        run_dir = resume_path.parent if resume_path.name == "outputs" else resume_path
+    else:
+        root_dir = args.root_dir or os.environ.get("PAPER2PPT_ROOT_DIR", "~/paper2ppt_runs")
+        run_root = Path(root_dir).expanduser().resolve()
+        base_name = _slugify(args.name) if args.name else _slugify(paper_title)
+        run_name = base_name
+        if args.query:
+            if len(arxiv_ids) + len(pdf_paths) > 1:
+                run_name = f"Q-{_query_summary(args.query)}-{base_name or 'MultiSource'}"
+            else:
+                run_name = f"Q-{_query_summary(args.query)}-{base_name}"
+        run_dir = run_root / run_name
 
     work_dir = Path(args.work_dir).expanduser().resolve() if args.work_dir else (run_dir / "work")
     out_dir = Path(args.out_dir).expanduser().resolve() if args.out_dir else (run_dir / "outputs")
@@ -280,6 +297,10 @@ def main() -> int:
         user_query=(args.query or "").strip(),
         web_search=not args.no_web_search,
         retry_slides=max(1, args.retry_slides),
+        retry_empty=max(1, args.retry_empty),
+        interactive=args.interactive,
+        check_interval=max(1, args.check_interval),
+        resume_path=Path(args.resume).expanduser().resolve() if args.resume else None,
     )
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)

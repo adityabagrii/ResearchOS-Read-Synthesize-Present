@@ -66,6 +66,10 @@ class RunConfig:
     user_query: str
     web_search: bool
     retry_slides: int
+    retry_empty: int
+    interactive: bool
+    check_interval: int
+    resume_path: Optional[Path]
 
 
 class OutlineJSONStore:
@@ -82,6 +86,10 @@ class OutlineJSONStore:
         return path
 
 
+def _progress_path(out_dir: Path) -> Path:
+    return Path(out_dir) / "progress.json"
+
+
 class ArxivClient:
     def get_metadata(self, arxiv_id: str) -> Dict[str, Any]:
         return get_arxiv_metadata(arxiv_id)
@@ -95,6 +103,49 @@ class OutlineBuilder:
         self.llm = llm
         self.cfg = cfg
         self.arxiv_client = arxiv_client
+
+    def _checkpoint(self, label: str, idx: int | None = None, total: int | None = None) -> None:
+        if not self.cfg.interactive:
+            return
+        if idx is not None and total is not None:
+            if idx % self.cfg.check_interval != 0 and idx != total:
+                return
+            prompt = f"[{label}] step {idx}/{total}. Press Enter to continue or type 'q' to quit: "
+        else:
+            prompt = f"[{label}] Press Enter to continue or type 'q' to quit: "
+        ans = input(prompt).strip().lower()
+        if ans in {"q", "quit", "exit"}:
+            raise RuntimeError("Aborted by user.")
+
+    def _prompt_feedback(self, label: str) -> str:
+        if not self.cfg.interactive:
+            return ""
+        ans = input(f"[{label}] Provide guidance (or press Enter to skip): ").strip()
+        return ans
+
+    def _save_progress(self, state: dict) -> None:
+        try:
+            path = _progress_path(self.cfg.out_dir)
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+        except Exception:
+            logger.exception("Failed to write progress.json")
+
+    @staticmethod
+    def _print_section(title: str, lines: List[str]) -> None:
+        width = 96
+        print("\n" + "=" * width)
+        print(title)
+        print("-" * width)
+        for line in lines:
+            wrapped = textwrap.fill(
+                line,
+                width=width,
+                initial_indent="",
+                subsequent_indent="",
+            )
+            print(wrapped)
+        print("=" * width + "\n")
 
     @staticmethod
     def chunk_text(s: str, chunk_chars: int) -> List[str]:
@@ -159,9 +210,25 @@ Include:
 Chunk:
 {snippet}
 """.strip()
-            out = safe_invoke(logger, self.llm, prompt, retries=6)
-            if out.strip():
-                return out.strip()
+            out = ""
+            for attempt in range(1, self.cfg.retry_empty + 1):
+                out = safe_invoke(logger, self.llm, prompt, retries=6)
+                if out.strip():
+                    return out.strip()
+                logger.warning(
+                    "Chunk %s returned empty output (attempt %s/%s).",
+                    i,
+                    attempt,
+                    self.cfg.retry_empty,
+                )
+
+            print(f\"\\nLLM returned empty output for this chunk after {self.cfg.retry_empty} attempts.\")
+            print("Prompt used:\n" + prompt[:1500] + ("\n... [truncated]" if len(prompt) > 1500 else ""))
+            ans = input("Type 's' to skip this chunk, or 'q' to quit: ").strip().lower()
+            if ans in {"s", "skip"}:
+                logger.warning("User chose to skip empty chunk %s.", i)
+                return "SKIPPED: user chose to skip empty chunk."
+            raise RuntimeError(f"Chunk {i} failed with empty output.")
         raise RuntimeError(f"Chunk {i} failed repeatedly (empty output).")
 
     def get_slide_titles(
@@ -235,6 +302,29 @@ Summary: {summary}
                 titles = []
             if len(titles) != self.cfg.slide_count:
                 logger.error("slide_titles count mismatch; applying fallback padding/truncation.")
+                if self.cfg.interactive:
+                    print("\nCurrent slide titles:")
+                    for i, t in enumerate(titles, 1):
+                        print(f"{i}. {t}")
+                    ans = input(
+                        "Type feedback to refine titles, or press Enter to auto-fix: "
+                    ).strip()
+                    if ans:
+                        refine_prompt = (
+                            "Return ONLY valid JSON for the same schema. "
+                            f"Ensure slide_titles has exactly {self.cfg.slide_count} items. "
+                            "Apply this user feedback: "
+                            + ans
+                            + "\nHere is the JSON to fix:\n"
+                            + json.dumps(obj, ensure_ascii=False)
+                        )
+                        refined = safe_invoke(logger, self.llm, refine_prompt, retries=6)
+                        refined_js = self.try_extract_json(refined) or refined
+                        try:
+                            obj = json.loads(refined_js)
+                            titles = obj.get("slide_titles", [])
+                        except Exception:
+                            titles = []
                 # Fallback: pad or truncate to required length
                 base = titles if titles else [f"Slide {i+1}" for i in range(self.cfg.slide_count)]
                 if len(base) < self.cfg.slide_count:
@@ -497,6 +587,9 @@ Generate slide #{idx}: {slide_title}
             blocks.append(f"[SOURCE: {s['title']}]\n{s['text']}")
         paper_text = "\n\n".join(blocks)
 
+        self._checkpoint("Sources collected")
+        global_feedback = self._prompt_feedback("Global feedback")
+
         web_sources = []
         web_context = ""
         if self.cfg.user_query and self.cfg.web_search:
@@ -512,6 +605,18 @@ Generate slide #{idx}: {slide_title}
                     lines.append(f"{i}. {s['title']} - {s['url']}\n   {s['snippet']}")
                 web_context = "\n".join(lines)
 
+        citations_base = []
+        for s in sources:
+            if s["type"] == "arxiv":
+                if s.get("url"):
+                    citations_base.append(f"{s['title']} - {s['url']}")
+                else:
+                    citations_base.append(f"arXiv:{s['id']}")
+            else:
+                citations_base.append(f"{s['title']} - {s['id']}")
+        if web_sources:
+            citations_base.extend([f"{s['title']} - {s['url']}" for s in web_sources])
+
         chunks = self.chunk_text(paper_text, 1500)
         N = min(self.cfg.max_summary_chunks, len(chunks))
         sums: List[str] = []
@@ -519,6 +624,7 @@ Generate slide #{idx}: {slide_title}
         logger.info("Summarizing paper (%s chunks)...", N)
         prev_summary_preview = ""
         if len(sources) > 1 and N > 1:
+            self._checkpoint("Summarize (parallel)", 0, N)
             max_workers = min(4, N)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {}
@@ -529,7 +635,7 @@ Generate slide #{idx}: {slide_title}
                             i,
                             chunks[i - 1],
                             meta,
-                            self.cfg.user_query,
+                            (self.cfg.user_query + "\n" + global_feedback).strip(),
                             web_context,
                             sources_block,
                         )
@@ -548,6 +654,12 @@ Generate slide #{idx}: {slide_title}
                         prev_summary_preview = self._preview_text(s, max_len=50)
                         bar.set_postfix_str(f"chunk: {i}/{N} | prev: {prev_summary_preview}")
                         bar.update(1)
+                        snippet = " ".join(s.splitlines())[:260]
+                        if snippet:
+                            self._print_section(
+                                f"Chunk {i} summary (preview)",
+                                [snippet],
+                            )
         else:
             with tqdm(
                 range(1, N + 1),
@@ -557,33 +669,63 @@ Generate slide #{idx}: {slide_title}
                 dynamic_ncols=False,
             ) as bar:
                 for i in bar:
+                    self._checkpoint("Summarize", i, N)
                     chunk_preview = self._preview_text(chunks[i - 1], max_len=50)
                     bar.set_postfix_str(f"chunk: {chunk_preview} | prev: {prev_summary_preview}")
                     s = self.summarize_chunk(
                         i,
                         chunks[i - 1],
                         meta,
-                        self.cfg.user_query,
+                        (self.cfg.user_query + "\n" + global_feedback).strip(),
                         web_context,
                         sources_block,
                     )
                     sums.append(s)
                     prev_summary_preview = self._preview_text(s, max_len=50)
+                    snippet = " ".join(s.splitlines())[:260]
+                    if snippet:
+                        self._print_section(
+                            f"Chunk {i} summary (preview)",
+                            [snippet],
+                        )
 
         merged_summary = "\n\n".join(sums)
 
         logger.info("Generating slide titles (%s)...", self.cfg.slide_count)
+        self._checkpoint("Slide titles")
+        titles_feedback = self._prompt_feedback("Slide titles feedback")
         titles_obj = self.get_slide_titles(
             meta,
             merged_summary,
-            user_query=self.cfg.user_query,
+            feedback=titles_feedback or "",
+            user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
             web_context=web_context,
             sources_block=sources_block,
             source_label=source_label,
         )
+        self._print_section(
+            "Slide titles",
+            [f\"{i+1}. {t}\" for i, t in enumerate(titles_obj.get(\"slide_titles\", []))],
+        )
+        self._save_progress(
+            {
+                "stage": "titles",
+                "meta": meta,
+                "merged_summary": merged_summary,
+                "titles_obj": titles_obj,
+                "web_context": web_context,
+                "sources_block": sources_block,
+                "source_label": source_label,
+                "citations": citations_base,
+                "slides": [],
+                "work_dir": str(self.cfg.work_dir),
+                "out_dir": str(self.cfg.out_dir),
+            }
+        )
 
         logger.info("Generating slides (%s)...", self.cfg.slide_count)
         slides = []
+        slide_feedback = self._prompt_feedback("Slide content feedback")
         for idx, title in tqdm(
             list(enumerate(titles_obj["slide_titles"], 1)),
             desc="Slides",
@@ -591,30 +733,37 @@ Generate slide #{idx}: {slide_title}
             ncols=TQDM_NCOLS,
             dynamic_ncols=False,
         ):
+            self._checkpoint("Slides", idx, self.cfg.slide_count)
             slides.append(
                 self.make_slide(
                     meta,
                     title,
                     merged_summary,
                     idx,
+                    feedback=slide_feedback or "",
                     include_speaker_notes=self.cfg.include_speaker_notes,
-                    user_query=self.cfg.user_query,
+                    user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
                     web_context=web_context,
                     sources_block=sources_block,
                 )
             )
+            self._save_progress(
+                {
+                    "stage": "slides",
+                    "meta": meta,
+                    "merged_summary": merged_summary,
+                    "titles_obj": titles_obj,
+                    "web_context": web_context,
+                    "sources_block": sources_block,
+                    "source_label": source_label,
+                    "citations": citations_base,
+                    "slides": slides,
+                    "work_dir": str(self.cfg.work_dir),
+                    "out_dir": str(self.cfg.out_dir),
+                }
+            )
 
-        citations = []
-        for s in sources:
-            if s["type"] == "arxiv":
-                if s.get("url"):
-                    citations.append(f"{s['title']} - {s['url']}")
-                else:
-                    citations.append(f"arXiv:{s['id']}")
-            else:
-                citations.append(f"{s['title']} - {s['id']}")
-        if web_sources:
-            citations.extend([f"{s['title']} - {s['url']}" for s in web_sources])
+        citations = list(citations_base)
 
         outline_dict = {
             "deck_title": titles_obj["deck_title"],
@@ -952,6 +1101,21 @@ class Pipeline:
             if "OK" not in x:
                 raise RuntimeError("LLM sanity check failed. Ensure your NVIDIA_API_KEY and model are valid.")
 
+    def _load_progress(self) -> Optional[dict]:
+        if not self.cfg.resume_path:
+            return None
+        out_dir = self.cfg.resume_path
+        if out_dir.name != "outputs":
+            out_dir = out_dir / "outputs"
+        path = _progress_path(out_dir)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.exception("Failed to read progress.json")
+            return None
+
     @staticmethod
     def print_outline(outline: DeckOutline) -> None:
         width = 96
@@ -978,17 +1142,70 @@ class Pipeline:
         print("\n" + "=" * width)
 
     def build_outline_with_approval(self, max_rounds: int = 3) -> Tuple[DeckOutline, Dict[str, Any]]:
-        (
-            outline,
-            meta,
-            merged_summary,
-            titles_obj,
-            web_context,
-            web_sources,
-            sources_block,
-            source_label,
-            citations_base,
-        ) = self.outline_builder.build_outline_once()
+        progress = self._load_progress()
+        if progress and progress.get("stage") in {"titles", "slides"}:
+            meta = progress.get("meta", {"title": "Resume", "abstract": ""})
+            merged_summary = progress.get("merged_summary", "")
+            titles_obj = progress.get("titles_obj", {})
+            web_context = progress.get("web_context", "")
+            sources_block = progress.get("sources_block", "")
+            source_label = progress.get("source_label", "Resume")
+            citations_base = progress.get("citations", [])
+            slides = progress.get("slides", [])
+            logger.info("Resuming from progress.json with %s slides.", len(slides))
+
+            # Continue generating remaining slides
+            for idx, title in enumerate(titles_obj.get("slide_titles", []), 1):
+                if idx <= len(slides):
+                    continue
+                self.outline_builder._checkpoint("Slides", idx, self.cfg.slide_count)
+                slides.append(
+                    self.outline_builder.make_slide(
+                        meta,
+                        title,
+                        merged_summary,
+                        idx,
+                        include_speaker_notes=self.cfg.include_speaker_notes,
+                        user_query=self.cfg.user_query,
+                        web_context=web_context,
+                        sources_block=sources_block,
+                    )
+                )
+                self.outline_builder._save_progress(
+                    {
+                        "stage": "slides",
+                        "meta": meta,
+                        "merged_summary": merged_summary,
+                        "titles_obj": titles_obj,
+                        "web_context": web_context,
+                        "sources_block": sources_block,
+                        "source_label": source_label,
+                        "citations": citations_base,
+                        "slides": slides,
+                        "work_dir": str(self.cfg.work_dir),
+                        "out_dir": str(self.cfg.out_dir),
+                    }
+                )
+
+            outline_dict = {
+                "deck_title": titles_obj.get("deck_title", "Resume"),
+                "arxiv_id": source_label,
+                "slides": slides,
+                "citations": citations_base,
+            }
+            outline = DeckOutline.model_validate(outline_dict)
+        else:
+            (
+                outline,
+                meta,
+                merged_summary,
+                titles_obj,
+                web_context,
+                web_sources,
+                sources_block,
+                source_label,
+                citations_base,
+            ) = self.outline_builder.build_outline_once()
         saved_path = self.outline_store.save(outline)
         logger.info("Saved outline draft: %s", saved_path)
 
@@ -1057,6 +1274,11 @@ class Pipeline:
     def run(self) -> Tuple[DeckOutline, Optional[Path], Optional[Path]]:
         self.sanity_checks()
         outline, _meta = self.build_outline_with_approval(max_rounds=3)
+
+        if self.cfg.interactive:
+            ans = input("[Render] Press Enter to render outputs or type 'q' to quit: ").strip().lower()
+            if ans in {"q", "quit", "exit"}:
+                raise RuntimeError("Aborted by user.")
 
         if self.cfg.use_figures and (self.cfg.pdf_paths or len(self.cfg.arxiv_ids) != 1):
             logger.warning("Figure insertion requires exactly one arXiv source; continuing without figures.")

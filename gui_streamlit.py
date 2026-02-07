@@ -269,6 +269,10 @@ def main() -> None:
             user_query=query.strip(),
             web_search=web_search,
             retry_slides=int(retry_slides),
+            retry_empty=3,
+            interactive=False,
+            check_interval=5,
+            resume_path=None,
         )
 
         cfg.out_dir.mkdir(parents=True, exist_ok=True)

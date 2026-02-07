@@ -8,12 +8,12 @@ Academic: aditya22029@iiitd.ac.in
 Agentic CLI that turns arXiv papers and/or local PDFs into Beamer slide decks using LLMs. It supports query-guided presentations, optional web search with citations, figure insertion (arXiv only), speaker notes, and multi-source synthesis.
 
 ## Highlights
-- arXiv and local PDF inputs (single or multiple)
+- arXiv, local PDF, and PDF URL inputs (single or multiple)
 - Query-guided decks that answer a user question (not just summaries)
 - Optional web search with citations
 - Speaker notes and figure suggestions
-- Robust slide generation with retries
-- Organized run directories with logs and outlines
+- Robust slide generation with retries and interactive fallbacks
+- Organized run directories with logs, outlines, and resume support
 
 ## Requirements
 - Python 3.10+
@@ -218,8 +218,13 @@ Notes on structure:
 - `--slides` number of slides (required)
 - `--bullets` bullets per slide (required)
 - `--query` user query to guide the presentation theme (enables web search by default)
+- `--name` custom run name for the output directory
 - `--no-web-search` disable web search even if `--query` is provided
 - `--retry-slides` retry count for slide generation (default `3`)
+- `--retry-empty` retry count for empty LLM outputs (default `3`)
+- `--interactive` enable interactive checkpoints to allow aborting
+- `--check-interval` how often to prompt during interactive runs (default `5`)
+- `--resume` resume from a previous run directory or outputs directory
 - `--root-dir` root directory for all runs (default `$PAPER2PPT_ROOT_DIR` or `~/paper2ppt_runs`)
 - `--work-dir` working directory (overrides `--root-dir`)
 - `--out-dir` output directory (overrides `--root-dir`)
@@ -237,6 +242,21 @@ Notes on structure:
 - Comparative literature review across multiple papers
 - Query-driven decks like "Compare methods" or "What are the tradeoffs?"
 - Generate speaker notes for rehearsals
+
+## Interactive Feedback and Resume
+- With `--interactive`, the CLI pauses at key stages and accepts optional guidance text.
+- This guidance is injected into slide title and slide generation prompts.
+- Resume a stopped run with `--resume /path/to/run` (or `.../outputs`).
+- If the model returns the wrong number of slide titles, the CLI can display the current titles and accept user feedback before auto-fixing.
+
+### Title Mismatch Handling
+When the LLM returns the wrong number of slide titles:
+1. Paper2ppt re-prompts the LLM to fix the count.
+2. If still mismatched and `--interactive` is enabled, it prints the current titles and asks for guidance.
+3. It then retries with your feedback or falls back to padding/truncation to meet the exact count.
+
+### Resume Flow
+When `--resume` is provided, the run loads `outputs/progress.json`, restores titles and slides generated so far, and continues from the next missing slide.
 
 ## Workflow Diagram
 ```text
