@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import textwrap
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -492,30 +493,61 @@ Generate slide #{idx}: {slide_title}
 
         chunks = self.chunk_text(paper_text, 1500)
         N = min(self.cfg.max_summary_chunks, len(chunks))
-        sums = []
+        sums: List[str] = []
 
         logger.info("Summarizing paper (%s chunks)...", N)
         prev_summary_preview = ""
-        with tqdm(
-            range(1, N + 1),
-            desc="Summarize",
-            unit="chunk",
-            ncols=TQDM_NCOLS,
-            dynamic_ncols=False,
-        ) as bar:
-            for i in bar:
-                chunk_preview = self._preview_text(chunks[i - 1], max_len=50)
-                bar.set_postfix_str(f"chunk: {chunk_preview} | prev: {prev_summary_preview}")
-                s = self.summarize_chunk(
-                    i,
-                    chunks[i - 1],
-                    meta,
-                    self.cfg.user_query,
-                    web_context,
-                    sources_block,
-                )
-                sums.append(s)
-                prev_summary_preview = self._preview_text(s, max_len=50)
+        if len(sources) > 1 and N > 1:
+            max_workers = min(4, N)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {}
+                for i in range(1, N + 1):
+                    futures[
+                        pool.submit(
+                            self.summarize_chunk,
+                            i,
+                            chunks[i - 1],
+                            meta,
+                            self.cfg.user_query,
+                            web_context,
+                            sources_block,
+                        )
+                    ] = i
+                with tqdm(
+                    total=N,
+                    desc="Summarize",
+                    unit="chunk",
+                    ncols=TQDM_NCOLS,
+                    dynamic_ncols=False,
+                ) as bar:
+                    for fut in as_completed(futures):
+                        i = futures[fut]
+                        s = fut.result()
+                        sums.append(s)
+                        prev_summary_preview = self._preview_text(s, max_len=50)
+                        bar.set_postfix_str(f"chunk: {i}/{N} | prev: {prev_summary_preview}")
+                        bar.update(1)
+        else:
+            with tqdm(
+                range(1, N + 1),
+                desc="Summarize",
+                unit="chunk",
+                ncols=TQDM_NCOLS,
+                dynamic_ncols=False,
+            ) as bar:
+                for i in bar:
+                    chunk_preview = self._preview_text(chunks[i - 1], max_len=50)
+                    bar.set_postfix_str(f"chunk: {chunk_preview} | prev: {prev_summary_preview}")
+                    s = self.summarize_chunk(
+                        i,
+                        chunks[i - 1],
+                        meta,
+                        self.cfg.user_query,
+                        web_context,
+                        sources_block,
+                    )
+                    sums.append(s)
+                    prev_summary_preview = self._preview_text(s, max_len=50)
 
         merged_summary = "\n\n".join(sums)
 

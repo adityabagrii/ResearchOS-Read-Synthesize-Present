@@ -130,6 +130,15 @@ paper2ppt \
   --bullets 4
 ```
 
+## Streamlit GUI
+Launch the interactive GUI to configure inputs and run the pipeline:
+```bash
+cd Paper2ppt
+streamlit run gui_streamlit.py
+```
+The GUI supports arXiv IDs, local PDFs, PDF directories, PDF URLs, and file uploads.
+You can save a default root directory from the sidebar for future runs.
+
 ## Multi-PDF and Multi-Source Workflow
 When you provide multiple arXiv IDs and/or multiple PDFs, Paper2ppt:
 - Parses each source separately
@@ -280,6 +289,7 @@ Paper2ppt/
   models.py
   pdf_utils.py
   pipeline.py
+  gui_streamlit.py
   tex_utils.py
   web_utils.py
   requirements.txt
@@ -294,6 +304,12 @@ Paper2ppt/
 
 ## Changelog
 See `CHANGELOG.md` for version history and changes.
+
+### Optimization Updates (Summary)
+- 0.5.5: GUI caches LLM client, de-duplicates uploads/downloads, and uses saved default root for faster setup.
+- 0.5.4: Multi-source chunk summaries run in parallel for lower latency.
+- 0.4.4: Slide generation retries avoid hard failures when JSON is malformed.
+- 0.4.2: Logging falls back to temp/console on filesystem timeouts.
 
 ## Install `pdflatex`
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.5 - 2026-02-07
+- GUI: Save a default root directory from the sidebar.
+- GUI: Reuse cached LLM client between runs to reduce setup time.
+- GUI: De-duplicate uploads and URL downloads to avoid redundant work.
+- GUI: Read `NVIDIA_API_KEY` from environment automatically.
+
+## 0.5.4 - 2026-02-07
+- Parallelized chunk summarization for multi-source runs to reduce latency.
+
+## 0.5.3 - 2026-02-07
+- GUI: Live log streaming during presentation generation.
+
+## 0.5.2 - 2026-02-07
+- Added Streamlit GUI (`gui_streamlit.py`) for interactive runs.
+
 ## 0.5.1 - 2026-02-07
 - Added `--pdf-url` for direct PDF links (repeatable or comma-separated).
 
@@ -18,7 +33,7 @@
 - Print top web search results for user reference during query-guided runs.
 
 ## 0.4.2 - 2026-02-07
-- Made file logging resilient to filesystem timeouts by falling back to a temp log or console-only.
+- Logging: fall back to temp log or console-only when file log fails.
 
 ## 0.4.1 - 2026-02-07
 - Added auto-install of updated dependencies when `requirements.txt` changes.
@@ -33,22 +48,15 @@
 - Added local PDF input via `--pdf` with text and image extraction for LLM chunking.
 - Added PyMuPDF (`pymupdf`) dependency for PDF parsing.
 - Local PDFs disable figure insertion (arXiv-only).
-- Kept fixed-width progress bars and live chunk preview.
-
-## 0.2.3 - 2026-02-07
-- Fixed progress bar width with `ncols` so resizing the terminal does not shift bars.
-- Added live chunk preview and previous summary preview during chunk summarization.
+- Fixed progress bar width and live chunk preview.
 
 ## 0.2.2 - 2026-02-07
 - README updated with steps to obtain and set NVIDIA API keys.
 - API key check now warns instead of exiting when missing.
 - Added `paper2ppt help` helper command.
 
-## 0.2.1 - 2026-02-07
-- Added `paper2ppt help` helper command for quick terminal guidance.
-
 ## 0.2.0 - 2026-02-07
-- Added `PAPER2PPT_ROOT_DIR` to set a default runs root from any working directory.
+- Added `PAPER2PPT_ROOT_DIR` for a default runs root.
 - Clarified output directory structure and precedence of `--root-dir`, `--work-dir`, and `--out-dir`.
 
 ## 0.1.0 - 2026-02-07

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paper2ppt"
-version = "0.5.1"
+version = "0.5.5"
 description = "Generate Beamer slides from arXiv papers"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
   "tqdm",
   "langchain-nvidia-ai-endpoints",
   "python-dotenv",
+  "streamlit",
 ]
 
 [project.scripts]
@@ -28,6 +29,7 @@ py-modules = [
   "pipeline",
   "pdf_utils",
   "web_utils",
+  "gui_streamlit",
   "tex_utils",
   "main",
   "logging_utils",

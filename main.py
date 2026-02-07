@@ -25,7 +25,7 @@ except Exception:
     from pipeline import Pipeline, RunConfig
 
 logger = logging.getLogger("paper2ppt")
-VERSION = "0.5.1"
+VERSION = "0.5.5"
 
 
 def _requirements_path() -> Path | None:
@@ -133,7 +133,7 @@ def parse_args() -> argparse.Namespace:
         help="Root directory for all runs (default: $PAPER2PPT_ROOT_DIR or ~/paper2ppt_runs)",
     )
     p.add_argument("--work-dir", "-wdir", default=None, help="Working directory (overrides --root-dir)")
-    p.add_argument("--out-dir", "odir", default=None, help="Output directory (overrides --root-dir)")
+    p.add_argument("--out-dir", "-odir", default=None, help="Output directory (overrides --root-dir)")
     p.add_argument("--max-summary-chunks", "-msc", type=int, default=30, help="Max summary chunks to process")
     p.add_argument("--no-approve", "-na", action="store_true", help="Skip outline approval loop")
     p.add_argument("--skip-llm-sanity", "-llms", action="store_true", help="Skip LLM sanity check")
@@ -207,7 +207,6 @@ def _download_pdfs(urls: list[str], out_dir: Path) -> list[Path]:
                 raise SystemExit(2)
             logger.warning("Skipping PDF URL after failure: %s", u)
     return downloaded
-
 
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "help":
