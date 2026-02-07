@@ -714,7 +714,7 @@ Generate slide #{idx}: {slide_title}
         )
         self._print_section(
             "Slide titles",
-            [f\"{i+1}. {t}\" for i, t in enumerate(titles_obj.get(\"slide_titles\", []))],
+            [f"{i+1}. {t}" for i, t in enumerate(titles_obj.get("slide_titles", []))],
         )
         self._save_progress(
             {
