@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.1 - 2026-02-07
+- Added `--topic-scholarly-only` to restrict topic mode to reputable sources.
+
+## 0.7.0 - 2026-02-07
+- Added topic-only research mode with web search and automatic PDF collection.
+- Topic is expanded into a focused research query (LLM) before search.
+- Downloads PDFs into `work/web_pdfs/` for topic runs.
+
+## 0.6.7 - 2026-02-07
+- Added `--titles-only` to stop after slide titles for faster runs.
+
+## 0.6.6 - 2026-02-07
+- Added robust slide title JSON extraction with retries and fallback placeholder titles.
+
 ## 0.6.5 - 2026-02-07
 - Added NVIDIA Flux (black-forest-labs/flux.1-kontext-dev) image generation provider and set as default.
 

@@ -178,6 +178,58 @@ Set your NVIDIA key:
 export NVIDIA_API_KEY="YOUR_KEY_HERE"
 ```
 
+## Topic-Only Research Mode
+You can start from a topic instead of providing sources. Paper2ppt will:
+- Expand the topic into a detailed research query
+- Search the web for relevant sources
+- Download available PDFs (arXiv and direct PDF links)
+- Build a presentation that answers the topic query
+
+Example:
+```bash
+paper2ppt --topic "Key frame selection in long video understanding" --slides 15 --bullets 4 --generate-images
+```
+
+### Topic-Only Workflow (Visual)
+```text
+User Topic
+  |
+  v
+Expand topic -> focused research query (LLM)
+  |
+  v
+Web search -> collect candidate sources
+  |
+  v
+Filter sources:
+  - arXiv links -> add as arXiv inputs
+  - PDF links -> download to work/web_pdfs/
+  |
+  v
+Extract + flatten text per source
+  |
+  v
+Chunk + summarize (LLM)
+  |
+  v
+Generate slide titles (LLM)
+  |
+  v
+Generate slides (LLM)
+  |
+  v
+Optional diagram/image generation from figure ideas
+  |
+  v
+Render Beamer LaTeX -> Compile PDF
+```
+
+### Notes for Topic Mode
+- Use `--max-web-results` to limit search breadth.
+- Use `--max-web-pdfs` to cap downloads for speed.
+- Topic mode stores the expanded query in `outputs/topic.txt` and uses it as the deck’s guiding question.
+- Use `--topic-scholarly-only` to reduce noise and keep sources to reputable venues.
+
 ## Multi-PDF and Multi-Source Workflow
 When you provide multiple arXiv IDs and/or multiple PDFs, Paper2ppt:
 - Parses each source separately
@@ -264,6 +316,11 @@ Notes on structure:
 - `-I`, `--interactive` enable interactive checkpoints to allow aborting
 - `-ci`, `--check-interval` how often to prompt during interactive runs (default `5`)
 - `-r`, `--resume` resume from a previous run directory or outputs directory
+- `--titles-only` stop after slide titles (skip slide generation)
+- `--topic` research a topic and build a deck from web + PDFs
+- `--max-web-results` max web results to consider in topic mode (default `6`)
+- `--max-web-pdfs` max PDFs to download in topic mode (default `4`)
+- `--topic-scholarly-only` restrict topic mode to scholarly sources (arXiv/CVPR/ICML/NeurIPS/Scholar)
 - `-gi`, `--generate-images` generate diagrams/images from figure ideas
 - `--image-provider` image generation provider (default `nvidia`)
 - `--image-model` image generation model name (default `black-forest-labs/flux.1-kontext-dev`)
@@ -376,3 +433,6 @@ See `CHANGELOG.md` for version history and changes.
 - 0.5.4: Multi-source chunk summaries run in parallel for lower latency.
 - 0.4.4: Slide generation retries avoid hard failures when JSON is malformed.
 - 0.4.2: Logging falls back to temp/console on filesystem timeouts.
+
+### Recent Additions
+- 0.7.0: Topic-only research mode with web search, PDF harvesting, and optional diagram generation.

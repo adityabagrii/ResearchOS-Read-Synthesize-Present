@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from tqdm import tqdm
 
 try:
-    from .arxiv_utils import download_and_extract_arxiv_source, get_arxiv_metadata
+    from .arxiv_utils import download_and_extract_arxiv_source, get_arxiv_metadata, extract_arxiv_id
     from .llm import safe_invoke
     from .models import DeckOutline
     from .pdf_utils import extract_pdf_content
@@ -30,7 +30,7 @@ try:
         write_beamer,
     )
 except Exception:
-    from arxiv_utils import download_and_extract_arxiv_source, get_arxiv_metadata
+    from arxiv_utils import download_and_extract_arxiv_source, get_arxiv_metadata, extract_arxiv_id
     from llm import safe_invoke
     from models import DeckOutline
     from pdf_utils import extract_pdf_content
@@ -79,6 +79,11 @@ class RunConfig:
     image_size: str
     image_quality: str
     image_api_key: str
+    titles_only: bool
+    topic: str
+    max_web_results: int
+    max_web_pdfs: int
+    topic_scholarly_only: bool
 
 
 class OutlineJSONStore:
@@ -286,12 +291,35 @@ Summary: {summary}
 {feedback_block}
 """.strip()
 
-        raw = safe_invoke(logger, self.llm, prompt, retries=6)
-        js = self.try_extract_json(raw)
+        js = None
+        last_raw = ""
+        for attempt in range(1, 4):
+            raw = safe_invoke(logger, self.llm, prompt, retries=6)
+            last_raw = raw
+            js = self.try_extract_json(raw)
+            if js is not None:
+                break
+            logger.warning("Slide titles JSON extraction failed (attempt %s/3).", attempt)
+            fix = safe_invoke(
+                logger,
+                self.llm,
+                "Return ONLY valid JSON for the schema. Fix this:\n" + raw[:1800],
+                retries=6,
+            )
+            js = self.try_extract_json(fix)
+            if js is not None:
+                break
         if js is None:
-            logger.error("RAW HEAD: %s", raw[:400])
-            logger.error("RAW TAIL: %s", raw[-400:])
-            raise RuntimeError("Could not extract slide_titles JSON.")
+            logger.error("RAW HEAD: %s", last_raw[:400])
+            logger.error("RAW TAIL: %s", last_raw[-400:])
+            # Fallback: create placeholder titles to avoid crash
+            obj = {
+                "deck_title": meta.get("title", "Presentation"),
+                "arxiv_id": source_label,
+                "slide_titles": [f"Slide {i+1}" for i in range(self.cfg.slide_count)],
+            }
+            return obj
+
         obj = json.loads(js)
         titles = obj.get("slide_titles", [])
         if len(titles) != self.cfg.slide_count:
@@ -741,6 +769,36 @@ Generate slide #{idx}: {slide_title}
             }
         )
 
+        if self.cfg.titles_only:
+            slides = [
+                {
+                    "title": t,
+                    "bullets": [],
+                    "speaker_notes": "",
+                    "figure_suggestions": [],
+                    "generated_images": [],
+                }
+                for t in titles_obj.get("slide_titles", [])
+            ]
+            outline_dict = {
+                "deck_title": titles_obj.get("deck_title", meta.get("title", "Presentation")),
+                "arxiv_id": source_label,
+                "slides": slides,
+                "citations": citations_base,
+            }
+            outline = DeckOutline.model_validate(outline_dict)
+            return (
+                outline,
+                meta,
+                merged_summary,
+                titles_obj,
+                web_context,
+                web_sources,
+                sources_block,
+                source_label,
+                citations_base,
+            )
+
         logger.info("Generating slides (%s)...", self.cfg.slide_count)
         slides = []
         slide_feedback = self._prompt_feedback("Slide content feedback")
@@ -1133,6 +1191,95 @@ class Pipeline:
         except Exception:
             logger.exception("Failed to read progress.json")
             return None
+
+    def prepare_topic_sources(self) -> None:
+        """Expand a topic, search the web, and collect sources for a topic-only run."""
+        if not self.cfg.topic:
+            return
+
+        prompt = f"""
+You are preparing a research presentation. Expand the topic into a focused query
+with key sub-questions and keywords. Return a single paragraph query.
+
+Topic: {self.cfg.topic}
+""".strip()
+        expanded = safe_invoke(logger, self.llm, prompt, retries=6).strip()
+        if expanded:
+            self.cfg.user_query = expanded
+        else:
+            expanded = self.cfg.topic
+            self.cfg.user_query = self.cfg.topic
+
+        logger.info("Topic expanded query: %s", expanded)
+        results = search_web(expanded, max_results=self.cfg.max_web_results)
+        if self.cfg.topic_scholarly_only:
+            allowed_domains = {
+                "arxiv.org",
+                "openaccess.thecvf.com",
+                "cvpr.thecvf.com",
+                "icml.cc",
+                "proceedings.mlr.press",
+                "neurips.cc",
+                "proceedings.neurips.cc",
+                "scholar.google.com",
+            }
+            filtered = []
+            for r in results:
+                url = r.get("url", "")
+                try:
+                    from urllib.parse import urlparse
+
+                    host = urlparse(url).netloc.lower()
+                except Exception:
+                    host = ""
+                if any(host == d or host.endswith("." + d) for d in allowed_domains):
+                    filtered.append(r)
+            results = filtered
+        if not results:
+            logger.warning("No web results found for topic search.")
+            return
+
+        arxiv_ids = list(self.cfg.arxiv_ids)
+        pdf_urls = []
+        for r in results:
+            url = r.get("url", "")
+            if "arxiv.org/abs/" in url or "arxiv.org/pdf/" in url:
+                try:
+                    arxiv_ids.append(extract_arxiv_id(url))
+                except Exception:
+                    pass
+            elif url.lower().endswith(".pdf"):
+                pdf_urls.append(url)
+
+        # Deduplicate
+        arxiv_ids = list(dict.fromkeys(arxiv_ids))
+        pdf_urls = list(dict.fromkeys(pdf_urls))[: self.cfg.max_web_pdfs]
+
+        if arxiv_ids:
+            self.cfg.arxiv_ids = arxiv_ids
+        if pdf_urls:
+            download_dir = self.cfg.work_dir / "web_pdfs"
+            download_dir.mkdir(parents=True, exist_ok=True)
+            for u in pdf_urls:
+                try:
+                    name = Path(u.split("?")[0]).name or "paper.pdf"
+                    if not name.lower().endswith(".pdf"):
+                        name = name + ".pdf"
+                    target = download_dir / name
+                    if target.exists() and target.stat().st_size > 0:
+                        self.cfg.pdf_paths.append(target)
+                        continue
+                    import requests
+
+                    r = requests.get(u, stream=True, timeout=60)
+                    r.raise_for_status()
+                    with target.open("wb") as f:
+                        for chunk in r.iter_content(chunk_size=1024 * 256):
+                            if chunk:
+                                f.write(chunk)
+                    self.cfg.pdf_paths.append(target)
+                except Exception:
+                    logger.exception("Failed to download PDF from %s", u)
 
     @staticmethod
     def print_outline(outline: DeckOutline) -> None:
