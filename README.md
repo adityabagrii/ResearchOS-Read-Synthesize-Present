@@ -91,6 +91,7 @@ paper2ppt \
   --slides 10 \
   --bullets 4
 ```
+If a PDF URL fails to download, the CLI will prompt you to either skip that URL or quit.
 
 Query-guided run (web search enabled by default):
 ```bash
