@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.2 - 2026-02-08
+- Added non-slide modes: `--read`, `--viva-mode`, `--describe-experiments`, `--exam-prep`, `--implementation-notes`.
+- Added teaching slide mode with pause questions: `--teaching-mode`.
+- Added persistent paper memory (`--index-paper`, `--search`) and daily research brief (`--daily-brief`).
+- Added read-mode diagrams embedded per section (with flowcharts/diagram generation) and improved formatting.
+- Added chat mode with RAG-style retrieval (`--chat`), chat history logging, and streaming output.
+- Added semantic embeddings for chat retrieval (computed only in chat mode).
+- Added summary caching with TTL and manual purge (`--cache-summary`, `--purge-cache`).
+- Improved resume support for read mode (progress.json and paper_context.json).
+- Fixed multiple dict-vs-model rendering crashes and improved figure/diagram slide handling.
+- Made LLM responses and read-mode generation more robust with per-section generation and progress indicators.
+- Updated docs/README with new modes, chat, and read-mode resume usage.
+- CLI version now reads installed package metadata.
+
 ## 0.7.1 - 2026-02-07
 - Added `--topic-scholarly-only` to restrict topic mode to reputable sources.
 

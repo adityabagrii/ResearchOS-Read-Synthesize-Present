@@ -140,6 +140,7 @@ class RunConfig:
     index_search_query: str
     daily_brief: bool
     cache_summary: bool
+    chat_mode: bool
 
 
 @dataclass
@@ -3256,6 +3257,14 @@ Slide titles: {[s.title for s in outline.slides]}
 
     def build_paper_context(self) -> PaperContext:
         """Build paper context without slide generation."""
+        self.outline_builder._save_progress(
+            {
+                "stage": "start",
+                "slides": [],
+                "work_dir": str(self.cfg.work_dir),
+                "out_dir": str(self.cfg.out_dir),
+            }
+        )
         sources: List[Dict[str, Any]] = []
 
         if self.cfg.arxiv_ids:
@@ -3416,17 +3425,35 @@ Slide titles: {[s.title for s in outline.slides]}
             sources_block=sources_block,
         )
 
+        self.outline_builder._save_progress(
+            {
+                "stage": "summary",
+                "meta": meta,
+                "paper_text": paper_text,
+                "merged_summary": merged_summary,
+                "web_context": web_context,
+                "sources_block": sources_block,
+                "source_label": source_label,
+                "citations": citations_base,
+                "slides": [],
+                "work_dir": str(self.cfg.work_dir),
+                "out_dir": str(self.cfg.out_dir),
+                "global_feedback": "",
+            }
+        )
+
         # Persist context for chat/RAG reuse
         try:
             ctx_path = self.cfg.out_dir / "paper_context.json"
             chunks = self.outline_builder.chunk_text(paper_text, 1200)
             embeddings = []
             embed_model = ""
-            try:
-                embeddings, embed_model = self._embed_texts(chunks)
-            except Exception:
-                embeddings = []
-                embed_model = ""
+            if self.cfg.chat_mode:
+                try:
+                    embeddings, embed_model = self._embed_texts(chunks)
+                except Exception:
+                    embeddings = []
+                    embed_model = ""
             ctx_path.write_text(
                 json.dumps(
                     {
@@ -3519,23 +3546,26 @@ Slide titles: {[s.title for s in outline.slides]}
         return dot
 
     def generate_reading_notes(self, ctx: PaperContext) -> Path:
-        prompt = f"""
-You are a paper-reading assistant. Produce 2-3 pages of structured markdown.
-Use the exact section headings below and do NOT wrap the output in code fences.
-
-## Problem
-## Key Idea
-## Method
-## Results
-## Limitations
-## What I Learned
+        sections = ["Problem", "Key Idea", "Method", "Results", "Limitations", "What I Learned"]
+        pieces = []
+        with tqdm(
+            sections,
+            desc="Reading notes",
+            unit="section",
+            ncols=TQDM_NCOLS,
+            dynamic_ncols=False,
+        ) as bar:
+            for sec in bar:
+                bar.set_postfix_str(f"section: {sec}")
+            logger.info("Generating reading section: %s", sec)
+            prompt = f"""
+Write the **{sec}** section for the reading notes in markdown.
 
 Rules:
-- Each section should be substantial (at least 2 short paragraphs or 5-7 bullets).
-- Cover the topic in depth, not just brief summaries.
-- Use plain markdown (no ``` fences).
-- Include the required sections at minimum; you may add more sections if helpful.
-- Stay faithful to the provided context only.
+- Provide 2-3 paragraphs OR 6-10 bullets.
+- Be detailed and specific; explain core concepts clearly.
+- Do NOT use code fences.
+- Only write content for this section (no other headings).
 
 Title: {ctx.meta.get('title', '')}
 Abstract: {ctx.meta.get('abstract', '')}
@@ -3543,24 +3573,37 @@ Summary: {ctx.merged_summary[:6000]}
 Sources:
 {ctx.sources_block}
 """.strip()
-        cleaned = ""
-        last = ""
-        for attempt in range(3):
-            raw = safe_invoke(logger, self.llm, prompt if attempt == 0 else last, retries=6)
+            raw = safe_invoke(logger, self.llm, prompt, retries=6)
             cleaned = self._strip_code_fences(raw)
-            missing = self._reading_missing_sections(cleaned)
-            if not missing and not self._reading_notes_too_short(cleaned):
-                break
-            last = (
-                "Rewrite the reading notes in depth (>= 500 words). "
-                "Use ALL required headings and do NOT use code fences. "
-                f"Missing headings: {', '.join(missing) if missing else 'none'}.\n\n"
-                f"Title: {ctx.meta.get('title','')}\n"
-                f"Abstract: {ctx.meta.get('abstract','')}\n"
-                f"Summary: {ctx.merged_summary[:6000]}\n"
-                f"Sources:\n{ctx.sources_block}\n"
-            )
-        notes_path = self._write_markdown("reading_notes.md", cleaned)
+            pieces.append(f"## {sec}\n{cleaned.strip()}\n")
+
+        combined = "\n".join(pieces).strip()
+        if self._reading_notes_too_short(combined):
+            # Expand each section once more if still short
+            expanded = []
+            with tqdm(
+                sections,
+                desc="Reading expand",
+                unit="section",
+                ncols=TQDM_NCOLS,
+                dynamic_ncols=False,
+            ) as bar:
+                for sec in bar:
+                    bar.set_postfix_str(f"section: {sec}")
+                logger.info("Expanding reading section: %s", sec)
+                prompt = f"""
+Expand the **{sec}** section to be more detailed (>= 120 words).
+Do NOT use code fences. Only write the section content.
+
+Title: {ctx.meta.get('title', '')}
+Summary: {ctx.merged_summary[:6000]}
+""".strip()
+                raw = safe_invoke(logger, self.llm, prompt, retries=6)
+                cleaned = self._strip_code_fences(raw)
+                expanded.append(f"## {sec}\n{cleaned.strip()}\n")
+            combined = "\n".join(expanded).strip()
+
+        notes_path = self._write_markdown("reading_notes.md", combined)
         if self.cfg.generate_flowcharts:
             try:
                 diagrams = self.generate_reading_diagrams(ctx)
@@ -3711,19 +3754,36 @@ Sources:
                 out.append("")
             return "\n".join(out).rstrip()
 
+        def _norm(s: str) -> str:
+            return re.sub(r"\s+", " ", s.strip()).lower()
+
+        norm_map = { _norm(k): v for k, v in section_map.items() }
+
         lines = md.splitlines()
         out_lines = []
+        inserted = set()
         i = 0
         while i < len(lines):
             line = lines[i]
             out_lines.append(line)
-            m = re.match(r"^##\s+(.+?)\s*$", line)
+            m = re.match(r"^#{2,3}\s+(.+?)\s*$", line)
             if m:
                 sec = m.group(1).strip()
-                if sec in section_map:
+                key = _norm(sec)
+                if key in norm_map:
                     out_lines.append("")
-                    out_lines.append(_block(section_map[sec]))
+                    out_lines.append(_block(norm_map[key]))
+                    inserted.add(key)
             i += 1
+
+        # Fallback: append any diagrams not inserted
+        missing = [v for k, v in norm_map.items() if k not in inserted]
+        if missing:
+            out_lines.append("")
+            out_lines.append("## Diagrams")
+            out_lines.append("")
+            for ds in missing:
+                out_lines.append(_block(ds))
         return "\n".join(out_lines).strip()
 
     def generate_experiment_description(self, ctx: PaperContext) -> Path:
@@ -3895,36 +3955,71 @@ Entries:
     def run_non_slide(self) -> List[Path]:
         self.sanity_checks()
         self.prepare_topic_sources()
+        logger.info("Starting non-slide mode...")
         ctx = None
         if self.cfg.resume_path and self.cfg.read_mode:
-            progress = self._load_progress()
-            if progress:
-                meta = progress.get("meta", {})
-                paper_text = progress.get("paper_text", "")
-                merged_summary = progress.get("merged_summary", "")
-                sources_block = progress.get("sources_block", "")
-                source_label = progress.get("source_label", "")
-                web_context = progress.get("web_context", "")
-                citations = progress.get("citations", [])
-                if paper_text and not merged_summary:
-                    merged_summary = self.outline_builder.summarize_text(
-                        paper_text,
-                        meta,
-                        global_feedback="",
-                        web_context=web_context,
-                        sources_block=sources_block,
-                    )
-                if paper_text:
+            # Prefer paper_context.json if present
+            resume_out = self.cfg.resume_path
+            if resume_out.name != "outputs":
+                resume_out = resume_out / "outputs"
+            ctx_path = resume_out / "paper_context.json"
+            if ctx_path.exists():
+                try:
+                    logger.info("Loading paper context from %s", ctx_path)
+                    obj = json.loads(ctx_path.read_text(encoding="utf-8"))
+                    meta = obj.get("meta", {})
+                    paper_text = "\n\n".join(obj.get("chunks", []))
+                    merged_summary = obj.get("summary", "")
+                    sources_block = obj.get("sources_block", "")
+                    source_label = obj.get("source_label", "")
                     ctx = PaperContext(
                         meta=meta,
                         paper_text=paper_text,
                         merged_summary=merged_summary,
                         sources_block=sources_block,
                         source_label=source_label,
-                        web_context=web_context,
-                        citations=citations,
+                        web_context="",
+                        citations=[],
                         sources=[],
                     )
+                except Exception:
+                    logger.exception("Failed to read paper_context.json; falling back to progress.json")
+            if ctx is None:
+                progress = self._load_progress()
+                if progress:
+                    logger.info("Loading progress.json from resume path")
+                    meta = progress.get("meta", {})
+                    paper_text = progress.get("paper_text", "")
+                    merged_summary = progress.get("merged_summary", "")
+                    sources_block = progress.get("sources_block", "")
+                    source_label = progress.get("source_label", "")
+                    web_context = progress.get("web_context", "")
+                    citations = progress.get("citations", [])
+                    if paper_text and not merged_summary:
+                        logger.info("Resuming summary generation from progress.json")
+                        merged_summary = self.outline_builder.summarize_text(
+                            paper_text,
+                            meta,
+                            global_feedback="",
+                            web_context=web_context,
+                            sources_block=sources_block,
+                        )
+                    if paper_text:
+                        ctx = PaperContext(
+                            meta=meta,
+                            paper_text=paper_text,
+                            merged_summary=merged_summary,
+                            sources_block=sources_block,
+                            source_label=source_label,
+                            web_context=web_context,
+                            citations=citations,
+                            sources=[],
+                        )
+            if ctx is None:
+                logger.warning(
+                    "Resume requested but no paper_context.json or usable progress.json found. "
+                    "Falling back to fresh extraction."
+                )
         if ctx is None:
             ctx = self.build_paper_context()
 
@@ -3975,7 +4070,7 @@ Entries:
 
         if not chunks:
             chunks = [summary] if summary else []
-        if chunks and not embeddings:
+        if self.cfg.chat_mode and chunks and not embeddings:
             try:
                 embeddings, _ = self._embed_texts(chunks)
                 ctx_path.write_text(

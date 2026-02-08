@@ -9,6 +9,7 @@ import sys
 import hashlib
 import subprocess
 import time
+from importlib import metadata
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -28,7 +29,16 @@ except Exception:
     from memory_utils import append_journal, purge_summary_cache, search_index, today_str
 
 logger = logging.getLogger("paper2ppt")
-VERSION = "0.6.4"
+
+
+def _load_version() -> str:
+    try:
+        return metadata.version("paper2ppt")
+    except Exception:
+        return "0.0.0"
+
+
+VERSION = _load_version()
 
 
 def _requirements_path() -> Path | None:
@@ -495,6 +505,7 @@ def main() -> int:
         index_search_query=(args.search or "").strip(),
         daily_brief=bool(args.daily_brief),
         cache_summary=bool(args.cache_summary),
+        chat_mode=bool(args.chat),
     )
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)

@@ -412,6 +412,7 @@ def main() -> None:
             index_search_query="",
             daily_brief=False,
             cache_summary=False,
+            chat_mode=False,
         )
 
         cfg.out_dir.mkdir(parents=True, exist_ok=True)
