@@ -101,6 +101,15 @@ class RunConfig:
     max_web_pdfs: int
     topic_scholarly_only: bool
     max_llm_workers: int
+    diagram_style: str
+    topic_must_include: List[str]
+    topic_exclude: List[str]
+    topic_allow_domains: List[str]
+    require_evidence: bool
+    diagram_intent_aware: bool
+    auto_comparisons: bool
+    baseline_framing: bool
+    quant_results: bool
 
 
 class OutlineJSONStore:
@@ -185,6 +194,7 @@ class OutlineBuilder:
         self.llm = llm
         self.cfg = cfg
         self.arxiv_client = arxiv_client
+        self.diagram_plan: List[dict] = []
 
     def _checkpoint(self, label: str, idx: int | None = None, total: int | None = None) -> None:
         """Function checkpoint.
@@ -222,6 +232,154 @@ class OutlineBuilder:
             return ""
         ans = input(f"[{label}] Provide guidance (or press Enter to skip): ").strip()
         return ans
+
+    @staticmethod
+    def _is_claim_bullet(text: str) -> bool:
+        """Check if a bullet contains a performance claim.
+        
+        Args:
+            text (str):
+        
+        Returns:
+            bool:
+        """
+        t = text.lower()
+        claim_markers = [
+            "improve", "outperform", "better", "worse", "increase", "decrease", "reduce",
+            "higher", "lower", "faster", "slower", "accuracy", "mAP", "f1", "precision",
+            "recall", "sota", "state-of-the-art", "gain", "drop", "boost", "achieve",
+            "surpass", "significant", "statistically",
+        ]
+        return any(k in t for k in claim_markers)
+
+    @staticmethod
+    def _has_evidence_tag(text: str) -> bool:
+        """Check if a bullet contains an evidence tag.
+        
+        Args:
+            text (str):
+        
+        Returns:
+            bool:
+        """
+        return bool(re.search(r"(source:|evidence:|https?://|Slide\\s+\\d+)", text, re.I))
+
+    def _flag_ungrounded_claims(self, slide: dict, experiment_refs: List[str]) -> dict:
+        """Flag or annotate claims without evidence.
+        
+        Args:
+            slide (dict):
+            experiment_refs (List[str]):
+        
+        Returns:
+            dict:
+        """
+        bullets = []
+        fallback_evidence = ""
+        if experiment_refs:
+            fallback_evidence = f"(evidence: {experiment_refs[0]})"
+        for b in slide.get("bullets", []):
+            if self._is_claim_bullet(b) and not self._has_evidence_tag(b):
+                logger.warning("Ungrounded claim detected; flagging for evidence.")
+                b = b.rstrip()
+                if fallback_evidence:
+                    b += f" {fallback_evidence}"
+                else:
+                    b += " (evidence: source TBD)"
+                b += " [NEEDS EVIDENCE]"
+            bullets.append(b)
+        slide["bullets"] = bullets
+        return slide
+
+    def _ensure_baseline_framing(self, slide_title: str, slide: dict) -> dict:
+        """Ensure baseline framing bullets on experiment/result slides.
+        
+        Args:
+            slide_title (str):
+            slide (dict):
+        
+        Returns:
+            dict:
+        """
+        if not re.search(r"(experiment|result|evaluation|benchmark|ablation|comparison)", slide_title, re.I):
+            return slide
+        bullets = list(slide.get("bullets", []))
+        need_a = "Why this baseline?"
+        need_b = "What does it control for?"
+        if not any(need_a.lower() in b.lower() for b in bullets):
+            bullets.append(need_a)
+        if not any(need_b.lower() in b.lower() for b in bullets):
+            bullets.append(need_b)
+        if len(bullets) > self.cfg.bullets_per_slide:
+            bullets = bullets[: self.cfg.bullets_per_slide]
+        slide["bullets"] = bullets
+        return slide
+
+    def _generate_quant_results_table(
+        self,
+        merged_summary: str,
+        sources_block: str,
+        web_context: str = "",
+    ) -> dict:
+        """Generate a quantitative results table from sources.
+        
+        Args:
+            merged_summary (str):
+            sources_block (str):
+            web_context (str):
+        
+        Returns:
+            dict:
+        """
+        summary = re.sub(r"\s+", " ", merged_summary).strip()[:1400]
+        web_block = f"\nWeb sources:\n{web_context}\n" if web_context else ""
+        prompt = f"""
+Return ONLY JSON.
+
+Schema:
+{{
+  "title": "Quantitative Results",
+  "columns": ["Method", "Dataset", "Metric", "Score"],
+  "rows": [["method", "dataset", "metric", "value"], ...]
+}}
+
+Rules:
+- Extract concrete numbers from the sources when available.
+- Use 6-12 rows.
+- If a number is missing, write "n/a" instead of guessing.
+- Use short method names and dataset names.
+
+Sources:
+{sources_block}
+
+Summary: {summary}
+{web_block}
+""".strip()
+        raw = safe_invoke(logger, self.llm, prompt, retries=6).strip()
+        js = self.try_extract_json(raw)
+        if js is None:
+            fix = safe_invoke(
+                logger,
+                self.llm,
+                "Return ONLY valid JSON for the schema. Fix this:\n" + raw[:1800],
+                retries=6,
+            )
+            js = self.try_extract_json(fix)
+        if js is None:
+            return {"title": "Quantitative Results", "columns": [], "rows": []}
+        try:
+            obj = json.loads(js)
+        except Exception:
+            return {"title": "Quantitative Results", "columns": [], "rows": []}
+        cols = obj.get("columns", [])
+        rows = obj.get("rows", [])
+        if not isinstance(cols, list) or not isinstance(rows, list):
+            return {"title": "Quantitative Results", "columns": [], "rows": []}
+        return {
+            "title": str(obj.get("title", "Quantitative Results")),
+            "columns": [str(c) for c in cols],
+            "rows": [[str(x) for x in r] for r in rows if isinstance(r, (list, tuple))],
+        }
 
     def _save_progress(self, state: dict) -> None:
         """Save progress.
@@ -277,6 +435,48 @@ class OutlineBuilder:
         """
         s = s.strip()
         return [s[i : i + chunk_chars] for i in range(0, len(s), chunk_chars)]
+
+    @staticmethod
+    def _experiment_slide_refs(titles: List[str]) -> List[str]:
+        """Collect experiment/result slide references.
+        
+        Args:
+            titles (List[str]):
+        
+        Returns:
+            List[str]:
+        """
+        refs = []
+        for i, t in enumerate(titles, 1):
+            if re.search(r"(experiment|result|evaluation|benchmark|ablation|comparison)", t, re.I):
+                refs.append(f"Slide {i} - {t}")
+        return refs
+
+    def _ensure_comparison_titles(self, titles: List[str]) -> List[str]:
+        """Ensure comparison titles exist when auto comparisons are enabled.
+        
+        Args:
+            titles (List[str]):
+        
+        Returns:
+            List[str]:
+        """
+        if not self.cfg.auto_comparisons:
+            return titles
+        want = [
+            "Full Video vs Key Frames: Trade-offs",
+            "Uniform Sampling vs Learned Selection",
+        ]
+        titles_lower = [t.lower() for t in titles]
+        missing = [w for w in want if w.lower() not in " ".join(titles_lower)]
+        if not missing:
+            return titles
+        out = list(titles)
+        # Replace from the end to keep the deck length stable
+        for j, w in enumerate(reversed(missing), 1):
+            if len(out) >= j:
+                out[-j] = w
+        return out
 
     @staticmethod
     def _preview_text(s: str, max_len: int = 60) -> str:
@@ -387,6 +587,89 @@ Chunk:
             raise RuntimeError(f"Chunk {i} failed with empty output.")
         raise RuntimeError(f"Chunk {i} failed repeatedly (empty output).")
 
+    def summarize_text(
+        self,
+        paper_text: str,
+        meta: dict,
+        global_feedback: str,
+        web_context: str = "",
+        sources_block: str = "",
+    ) -> str:
+        """Summarize long text into a merged summary.
+        
+        Args:
+            paper_text (str):
+            meta (dict):
+            global_feedback (str):
+            web_context (str):
+            sources_block (str):
+        
+        Returns:
+            str:
+        """
+        chunks = self.chunk_text(paper_text, 1500)
+        N = min(len(chunks), self.cfg.max_summary_chunks)
+        chunks = chunks[:N]
+        sums = []
+        prev_summary_preview = "..."
+        if self.cfg.max_llm_workers > 1 and N > 1:
+            max_workers = min(2, self.cfg.max_llm_workers, N)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {}
+                for i in range(1, N + 1):
+                    futures[
+                        pool.submit(
+                            self.summarize_chunk,
+                            i,
+                            chunks[i - 1],
+                            meta,
+                            (self.cfg.user_query + "\n" + global_feedback).strip(),
+                            web_context,
+                            sources_block,
+                        )
+                    ] = i
+                results: dict[int, str] = {}
+                with tqdm(
+                    total=N,
+                    desc="Summarize",
+                    unit="chunk",
+                    ncols=TQDM_NCOLS,
+                    dynamic_ncols=False,
+                ) as bar:
+                    for fut in as_completed(futures):
+                        i = futures[fut]
+                        s = fut.result()
+                        results[i] = s
+                        prev_summary_preview = self._preview_text(s, max_len=50)
+                        bar.set_postfix_str(f"chunk: {i}/{N} | prev: {prev_summary_preview}")
+                        bar.update(1)
+                for i in range(1, N + 1):
+                    if i in results:
+                        sums.append(results[i])
+        else:
+            with tqdm(
+                range(1, N + 1),
+                desc="Summarize",
+                unit="chunk",
+                ncols=TQDM_NCOLS,
+                dynamic_ncols=False,
+            ) as bar:
+                for i in bar:
+                    self._checkpoint("Summarize", i, N)
+                    chunk_preview = self._preview_text(chunks[i - 1], max_len=50)
+                    bar.set_postfix_str(f"chunk: {chunk_preview} | prev: {prev_summary_preview}")
+                    s = self.summarize_chunk(
+                        i,
+                        chunks[i - 1],
+                        meta,
+                        (self.cfg.user_query + "\n" + global_feedback).strip(),
+                        web_context,
+                        sources_block,
+                    )
+                    sums.append(s)
+                    prev_summary_preview = self._preview_text(s, max_len=50)
+        return "\n\n".join(sums)
+
     def get_slide_titles(
         self,
         meta: dict,
@@ -422,6 +705,11 @@ Chunk:
             if user_query
             else ""
         )
+        comparison_rule = ""
+        if self.cfg.auto_comparisons:
+            comparison_rule = (
+                "- Include explicit comparison slides (e.g., full video vs key frames; uniform sampling vs learned selection)\n"
+            )
 
         prompt = f"""
 Return ONLY JSON.
@@ -439,6 +727,7 @@ Rules:
 - No extra keys
 - Deck title must reflect the user query and the source titles when provided
 {query_rule}
+{comparison_rule}
 
 Title: {meta['title']}
 Abstract: {meta['abstract']}
@@ -476,7 +765,27 @@ Summary: {summary}
             }
             return obj
 
-        obj = json.loads(js)
+        obj = None
+        for attempt in range(1, 4):
+            try:
+                obj = json.loads(js)
+                break
+            except Exception:
+                logger.warning("Slide titles JSON parse failed (attempt %s/3).", attempt)
+                fix = safe_invoke(
+                    logger,
+                    self.llm,
+                    "Return ONLY valid JSON for the schema. Fix this:\n" + js[:1800],
+                    retries=6,
+                )
+                js = self.try_extract_json(fix) or fix
+        if obj is None:
+            logger.error("Slide titles JSON parse failed after retries; using fallback titles.")
+            obj = {
+                "deck_title": meta.get("title", "Presentation"),
+                "arxiv_id": source_label,
+                "slide_titles": [f"Slide {i+1}" for i in range(self.cfg.slide_count)],
+            }
         titles = obj.get("slide_titles", [])
         if len(titles) != self.cfg.slide_count:
             fix_prompt = (
@@ -525,6 +834,152 @@ Summary: {summary}
                 obj["slide_titles"] = base[: self.cfg.slide_count]
         return obj
 
+    def propose_diagram_plan(
+        self,
+        titles: List[str],
+        merged_summary: str,
+        user_query: str = "",
+        web_context: str = "",
+        sources_block: str = "",
+    ) -> List[dict]:
+        """Propose diagram plan.
+        
+        Args:
+            titles (List[str]):
+            merged_summary (str):
+            user_query (str):
+            web_context (str):
+            sources_block (str):
+        
+        Returns:
+            List[dict]:
+        """
+        summary = re.sub(r"\s+", " ", merged_summary).strip()[:1200]
+        query_block = f"\nUser query:\n{user_query}\n" if user_query else ""
+        web_block = f"\nWeb sources:\n{web_context}\n" if web_context else ""
+        sources_block = f"\nSources:\n{sources_block}\n" if sources_block else ""
+
+        prompt = f"""
+You are designing diagrams that carry core information for the deck.
+Decide why each diagram is needed (intent) and specify a concrete graph spec.
+Return ONLY JSON.
+
+Schema:
+{{
+  "diagrams": [
+    {{
+      "slide_index": 1,
+      "intent": "process|comparison|abstraction",
+      "type": "comparison|taxonomy|pipeline|dag|sequence|block",
+      "caption": "string",
+      "priority": 1,
+      "nodes": ["string", "..."],
+      "edges": [["A","B","label"], ["A","C","label"]]
+    }}
+  ]
+}}
+
+Rules:
+- Provide 5 to 8 diagrams total.
+- Each diagram must be non-linear (not just a single chain).
+- Include at least one comparison diagram and one process/pipeline diagram.
+- Prefer diagrams that replace text: problem framing, method pipeline, comparisons, ablations.
+- Use 6-10 nodes per diagram; edges must reference existing nodes.
+- Target slide_index that best fits the diagram.
+
+Slide titles:
+{titles}
+
+Summary: {summary}
+{query_block}{web_block}{sources_block}
+""".strip()
+
+        raw = safe_invoke(logger, self.llm, prompt, retries=6).strip()
+        js = self.try_extract_json(raw)
+        if js is None:
+            fix = safe_invoke(
+                logger,
+                self.llm,
+                "Return ONLY valid JSON for the schema. Fix this:\n" + raw[:1800],
+                retries=6,
+            )
+            js = self.try_extract_json(fix)
+        if js is None:
+            logger.warning("Diagram plan JSON extraction failed; skipping.")
+            return []
+        try:
+            obj = json.loads(js)
+        except Exception:
+            logger.warning("Diagram plan JSON parse failed; skipping.")
+            return []
+        diagrams = obj.get("diagrams", [])
+        if not isinstance(diagrams, list):
+            return []
+        cleaned = []
+        for d in diagrams:
+            if not isinstance(d, dict):
+                continue
+            idx = d.get("slide_index")
+            if not isinstance(idx, int):
+                continue
+            nodes = d.get("nodes", [])
+            edges = d.get("edges", [])
+            if not isinstance(nodes, list) or len(nodes) < 3:
+                continue
+            if not isinstance(edges, list):
+                edges = []
+            cleaned.append(
+                {
+                    "slide_index": idx,
+                    "intent": str(d.get("intent", "process")),
+                    "type": str(d.get("type", "block")),
+                    "caption": str(d.get("caption", "")).strip(),
+                    "priority": int(d.get("priority", 3)) if str(d.get("priority", "")).isdigit() else 3,
+                    "nodes": [str(n) for n in nodes],
+                    "edges": [tuple(e) for e in edges if isinstance(e, (list, tuple)) and len(e) >= 2],
+                }
+            )
+        if len(cleaned) < 5:
+            fix = safe_invoke(
+                logger,
+                self.llm,
+                "Return ONLY valid JSON for the schema. Provide 5-8 diagrams:\n" + js[:1800],
+                retries=6,
+            )
+            fix_js = self.try_extract_json(fix)
+            if fix_js:
+                try:
+                    obj2 = json.loads(fix_js)
+                    more = obj2.get("diagrams", [])
+                    if isinstance(more, list):
+                        cleaned = []
+                        for d in more:
+                            if not isinstance(d, dict):
+                                continue
+                            idx = d.get("slide_index")
+                            if not isinstance(idx, int):
+                                continue
+                            nodes = d.get("nodes", [])
+                            edges = d.get("edges", [])
+                            if not isinstance(nodes, list) or len(nodes) < 3:
+                                continue
+                            if not isinstance(edges, list):
+                                edges = []
+                            cleaned.append(
+                                {
+                                    "slide_index": idx,
+                                    "intent": str(d.get("intent", "process")),
+                                    "type": str(d.get("type", "block")),
+                                    "caption": str(d.get("caption", "")).strip(),
+                                    "priority": int(d.get("priority", 3)) if str(d.get("priority", "")).isdigit() else 3,
+                                    "nodes": [str(n) for n in nodes],
+                                    "edges": [tuple(e) for e in edges if isinstance(e, (list, tuple)) and len(e) >= 2],
+                                }
+                            )
+                except Exception:
+                    pass
+        return cleaned
+
     def make_slide(
         self,
         meta: dict,
@@ -536,6 +991,7 @@ Summary: {summary}
         user_query: str = "",
         web_context: str = "",
         sources_block: str = "",
+        experiment_refs: Optional[List[str]] = None,
     ) -> dict:
         """Function make slide.
         
@@ -563,6 +1019,26 @@ Summary: {summary}
             if web_context
             else ""
         )
+        evidence_rule = ""
+        experiment_hint = ""
+        if self.cfg.require_evidence:
+            evidence_rule = (
+                "\n- Any performance/accuracy/comparison claim must include evidence tags. "
+                "Use either '(source: URL)' or '(evidence: Slide N - Results/Experiments)'.\n"
+            )
+            if experiment_refs:
+                experiment_hint = (
+                    "\nExperiment slide references (for evidence tags):\n- "
+                    + "\n- ".join(experiment_refs)
+                    + "\n"
+                )
+        baseline_rule = ""
+        if self.cfg.baseline_framing:
+            if re.search(r"(experiment|result|evaluation|benchmark|ablation|comparison)", slide_title, re.I):
+                baseline_rule = (
+                    "\n- Include two bullets that explicitly answer: "
+                    "'Why this baseline?' and 'What does it control for?'\n"
+                )
         query_rule = (
             "\n- The slide content must answer the user query (not just summarize)\n"
             if user_query
@@ -602,12 +1078,14 @@ Rules:
 - graphviz_diagram_ideas should mention other diagram types: comparison chart, dependency graph, DAG, hierarchy, decision tree, ablation map, problem-solution map.
 - Focus on visually depicting both the problem statement and the solution; diagrams should carry essential information.
 {source_rule}
+{evidence_rule}
+{baseline_rule}
 {query_rule}
 
 Paper title: {meta['title']}
 Abstract: {meta['abstract']}
 Context: {ctx}
-{query_block}{web_block}{sources_block}
+{query_block}{web_block}{sources_block}{experiment_hint}
 {feedback_block}
 
 Generate slide #{idx}: {slide_title}
@@ -629,6 +1107,7 @@ Generate slide #{idx}: {slide_title}
                 "figure_suggestions": [],
                 "flowchart": {"steps": [], "structure": "linear", "caption": ""},
                 "graphviz_diagram_ideas": [],
+                "tables": [],
             }
 
         for attempt in range(1, self.cfg.retry_slides + 1):
@@ -705,6 +1184,12 @@ Generate slide #{idx}: {slide_title}
                 s["flowchart"].setdefault("steps", [])
                 s["flowchart"].setdefault("structure", "linear")
                 s["flowchart"].setdefault("caption", "")
+            if "tables" not in s:
+                s["tables"] = []
+            if self.cfg.baseline_framing:
+                s = self._ensure_baseline_framing(slide_title, s)
+            if self.cfg.require_evidence:
+                s = self._flag_ungrounded_claims(s, experiment_refs or [])
             return s
 
         logger.error("Slide %s failed after retries; using fallback.", idx)
@@ -728,6 +1213,14 @@ Generate slide #{idx}: {slide_title}
         Returns:
             Tuple[DeckOutline, Dict[str, Any], str, Dict[str, Any], str, List[Dict[str, str]], str, str, List[str]]:
         """
+        self._save_progress(
+            {
+                "stage": "start",
+                "slides": [],
+                "work_dir": str(self.cfg.work_dir),
+                "out_dir": str(self.cfg.out_dir),
+            }
+        )
         sources: List[Dict[str, Any]] = []
 
         if self.cfg.arxiv_ids:
@@ -774,17 +1267,15 @@ Generate slide #{idx}: {slide_title}
                     if len(paper_text) <= 500:
                         raise RuntimeError("paper_text too small; main tex likely wrong.")
 
-                    sources.append(
-                        {
-                            "type": "arxiv",
-                            "id": arxiv_id,
-                            "title": title,
-                            "abstract": abstract,
-                            "url": url,
-                            "text": paper_text,
-                            "images": [],
-                        }
-                    )
+                    return {
+                        "type": "arxiv",
+                        "id": arxiv_id,
+                        "title": title,
+                        "abstract": abstract,
+                        "url": url,
+                        "text": paper_text,
+                        "images": [],
+                    }
                 except Exception:
                     logger.exception("Skipping arXiv source due to errors: %s", arxiv_id)
                 return None
@@ -875,7 +1366,7 @@ Generate slide #{idx}: {slide_title}
 
         self._checkpoint("Sources collected")
         global_feedback = self._prompt_feedback("Global feedback")
-
+        citations_base: List[str] = []
         web_sources = []
         web_context = ""
         if self.cfg.user_query and self.cfg.web_search:
@@ -890,6 +1381,21 @@ Generate slide #{idx}: {slide_title}
                 for i, s in enumerate(web_sources, 1):
                     lines.append(f"{i}. {s['title']} - {s['url']}\n   {s['snippet']}")
                 web_context = "\n".join(lines)
+        self._save_progress(
+            {
+                "stage": "sources",
+                "meta": meta,
+                "paper_text": paper_text,
+                "web_context": web_context,
+                "sources_block": sources_block,
+                "source_label": source_label,
+                "citations": citations_base,
+                "slides": [],
+                "work_dir": str(self.cfg.work_dir),
+                "out_dir": str(self.cfg.out_dir),
+                "global_feedback": global_feedback,
+            }
+        )
 
         citations_base = []
         for s in sources:
@@ -970,6 +1476,22 @@ Generate slide #{idx}: {slide_title}
                     prev_summary_preview = self._preview_text(s, max_len=50)
 
         merged_summary = "\n\n".join(sums)
+        self._save_progress(
+            {
+                "stage": "summary",
+                "meta": meta,
+                "paper_text": paper_text,
+                "merged_summary": merged_summary,
+                "web_context": web_context,
+                "sources_block": sources_block,
+                "source_label": source_label,
+                "citations": citations_base,
+                "slides": [],
+                "work_dir": str(self.cfg.work_dir),
+                "out_dir": str(self.cfg.out_dir),
+                "global_feedback": global_feedback,
+            }
+        )
 
         logger.info("Generating slide titles (%s)...", self.cfg.slide_count)
         self._checkpoint("Slide titles")
@@ -981,6 +1503,10 @@ Generate slide #{idx}: {slide_title}
             sources_block=sources_block,
             source_label=source_label,
         )
+        if self.cfg.auto_comparisons:
+            titles_obj["slide_titles"] = self._ensure_comparison_titles(
+                titles_obj.get("slide_titles", [])
+            )
         self._print_section(
             "Slide titles",
             [t for t in titles_obj.get("slide_titles", [])],
@@ -998,10 +1524,24 @@ Generate slide #{idx}: {slide_title}
                 source_label=source_label,
             )
             titles_obj = revised
+            if self.cfg.auto_comparisons:
+                titles_obj["slide_titles"] = self._ensure_comparison_titles(
+                    titles_obj.get("slide_titles", [])
+                )
             self._print_section(
                 "Revised slide titles",
                 [t for t in titles_obj.get("slide_titles", [])],
             )
+        diagram_plan = []
+        if self.cfg.diagram_intent_aware:
+            diagram_plan = self.propose_diagram_plan(
+                titles_obj.get("slide_titles", []),
+                merged_summary,
+                user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
+                web_context=web_context,
+                sources_block=sources_block,
+            )
+        self.diagram_plan = diagram_plan
         self._save_progress(
             {
                 "stage": "titles",
@@ -1012,9 +1552,11 @@ Generate slide #{idx}: {slide_title}
                 "sources_block": sources_block,
                 "source_label": source_label,
                 "citations": citations_base,
+                "diagram_plan": diagram_plan,
                 "slides": [],
                 "work_dir": str(self.cfg.work_dir),
                 "out_dir": str(self.cfg.out_dir),
+                "global_feedback": global_feedback,
             }
         )
 
@@ -1026,6 +1568,7 @@ Generate slide #{idx}: {slide_title}
                     "speaker_notes": "",
                     "figure_suggestions": [],
                     "generated_images": [],
+                    "tables": [],
                 }
                 for t in titles_obj.get("slide_titles", [])
             ]
@@ -1051,6 +1594,7 @@ Generate slide #{idx}: {slide_title}
         logger.info("Generating slides (%s)...", self.cfg.slide_count)
         slides = []
         slide_feedback = self._prompt_feedback("Slide content feedback")
+        experiment_refs = self._experiment_slide_refs(titles_obj.get("slide_titles", []))
         for idx, title in tqdm(
             list(enumerate(titles_obj["slide_titles"], 1)),
             desc="Slides",
@@ -1070,6 +1614,7 @@ Generate slide #{idx}: {slide_title}
                     user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
                     web_context=web_context,
                     sources_block=sources_block,
+                    experiment_refs=experiment_refs,
                 )
             )
             self._save_progress(
@@ -1082,13 +1627,35 @@ Generate slide #{idx}: {slide_title}
                     "sources_block": sources_block,
                     "source_label": source_label,
                     "citations": citations_base,
+                    "diagram_plan": diagram_plan,
                     "slides": slides,
                     "work_dir": str(self.cfg.work_dir),
                     "out_dir": str(self.cfg.out_dir),
+                    "global_feedback": global_feedback,
                 }
             )
 
         citations = list(citations_base)
+
+        if self.cfg.quant_results:
+            table = self._generate_quant_results_table(
+                merged_summary,
+                sources_block,
+                web_context=web_context,
+            )
+            if table.get("columns") and table.get("rows"):
+                slides.append(
+                    {
+                        "title": table.get("title", "Quantitative Results"),
+                        "bullets": [],
+                        "speaker_notes": "",
+                        "figure_suggestions": [],
+                        "generated_images": [],
+                        "flowchart": {"steps": [], "structure": "linear", "caption": ""},
+                        "graphviz_diagram_ideas": [],
+                        "tables": [table],
+                    }
+                )
 
         outline_dict = {
             "deck_title": titles_obj["deck_title"],
@@ -1537,8 +2104,9 @@ class Pipeline:
             raise ValueError("slide_count must be >= 2")
         if self.cfg.bullets_per_slide < 1:
             raise ValueError("bullets_per_slide must be >= 1")
-        if not self.cfg.arxiv_ids and not self.cfg.pdf_paths and not self.cfg.topic:
-            raise ValueError("Provide arXiv/PDF sources or use --topic")
+        if not self.cfg.resume_path:
+            if not self.cfg.arxiv_ids and not self.cfg.pdf_paths and not self.cfg.topic:
+                raise ValueError("Provide arXiv/PDF sources or use --topic")
         for p in self.cfg.pdf_paths:
             if not p.exists():
                 raise FileNotFoundError(f"PDF not found: {p}")
@@ -1661,7 +2229,10 @@ User feedback: {ans}
         logger.info("Web search query (sanitized): %s", clean_query)
         logger.info("Web search query (keywords): %s", short_query)
         results = search_web(short_query or clean_query, max_results=self.cfg.max_web_results)
-        if self.cfg.topic_scholarly_only:
+        allowed_domains: set[str] = set()
+        if self.cfg.topic_allow_domains:
+            allowed_domains = set(self.cfg.topic_allow_domains)
+        elif self.cfg.topic_scholarly_only:
             allowed_domains = {
                 "arxiv.org",
                 "openaccess.thecvf.com",
@@ -1671,19 +2242,56 @@ User feedback: {ans}
                 "neurips.cc",
                 "proceedings.neurips.cc",
                 "scholar.google.com",
+                "openreview.net",
+                "aclanthology.org",
             }
-            filtered = []
-            for r in results:
-                url = r.get("url", "")
-                try:
-                    from urllib.parse import urlparse
 
-                    host = urlparse(url).netloc.lower()
-                except Exception:
-                    host = ""
-                if any(host == d or host.endswith("." + d) for d in allowed_domains):
-                    filtered.append(r)
-            results = filtered
+        def _matches_keywords(item: dict) -> bool:
+            """Check topic keyword filters.
+            
+            Args:
+                item (dict):
+            
+            Returns:
+                bool:
+            """
+            text = " ".join([item.get("title", ""), item.get("snippet", ""), item.get("url", "")]).lower()
+            for kw in self.cfg.topic_must_include:
+                if kw.lower() not in text:
+                    return False
+            for kw in self.cfg.topic_exclude:
+                if kw.lower() in text:
+                    return False
+            return True
+
+        def _filter_results(items: List[dict]) -> List[dict]:
+            """Apply allowlist and keyword filters.
+            
+            Args:
+                items (List[dict]):
+            
+            Returns:
+                List[dict]:
+            """
+            filtered_items = items
+            if allowed_domains:
+                filtered_items = []
+                for r in items:
+                    url = r.get("url", "")
+                    try:
+                        from urllib.parse import urlparse
+
+                        host = urlparse(url).netloc.lower()
+                    except Exception:
+                        host = ""
+                    if any(host == d or host.endswith("." + d) for d in allowed_domains):
+                        filtered_items.append(r)
+            if filtered_items:
+                filtered_items = [r for r in filtered_items if _matches_keywords(r)]
+            return filtered_items
+
+        results = _filter_results(results)
+
         # If empty, ask LLM for search queries and retry
         if not results:
             query_prompt = f"""
@@ -1727,20 +2335,58 @@ Topic: {self.cfg.topic}
                         continue
                     seen.add(url)
                     deduped.append(r)
-                results = deduped[: self.cfg.max_web_results]
-                if self.cfg.topic_scholarly_only:
-                    filtered = []
-                    for r in results:
-                        url = r.get("url", "")
-                        try:
-                            from urllib.parse import urlparse
+                results = _filter_results(deduped[: self.cfg.max_web_results])
 
-                            host = urlparse(url).netloc.lower()
-                        except Exception:
-                            host = ""
-                        if any(host == d or host.endswith("." + d) for d in allowed_domains):
-                            filtered.append(r)
-                    results = filtered
+        # Rank results with simple heuristic for transparency
+        def _rank_reason(item: dict) -> tuple[int, str]:
+            title = item.get("title", "").lower()
+            url = item.get("url", "").lower()
+            snippet = item.get("snippet", "").lower()
+            text = " ".join([title, snippet])
+            score = 0
+            reasons = []
+            # domain bonus
+            venue_map = {
+                "openaccess.thecvf.com": "CVPR/ICCV/ECCV",
+                "cvpr.thecvf.com": "CVPR",
+                "arxiv.org": "arXiv",
+                "neurips.cc": "NeurIPS",
+                "proceedings.neurips.cc": "NeurIPS",
+                "icml.cc": "ICML",
+                "proceedings.mlr.press": "ICML",
+                "openreview.net": "OpenReview",
+                "aclanthology.org": "ACL",
+                "scholar.google.com": "Scholar",
+            }
+            for d in allowed_domains:
+                if d in url:
+                    score += 3
+                    venue = venue_map.get(d, d)
+                    reasons.append(f"venue:{venue}")
+                    break
+            # keyword hits
+            for kw in self.cfg.topic_must_include:
+                if kw.lower() in text:
+                    score += 2
+                    reasons.append(f"kw:{kw}")
+            # recency: year in title/snippet
+            m = re.search(r"(20\\d{2})", text)
+            if m:
+                score += 1
+                reasons.append(f"year:{m.group(1)}")
+            if "cited by" in text or "citations" in text or "citation" in text:
+                score += 1
+                reasons.append("citations:mentioned")
+            return score, ", ".join(reasons) or "relevance"
+
+        if results:
+            ranked = []
+            for r in results:
+                score, reason = _rank_reason(r)
+                r["_score"] = score
+                r["_reason"] = reason
+                ranked.append(r)
+            results = sorted(ranked, key=lambda x: x.get("_score", 0), reverse=True)
 
         # Debug output for topic search (after any LLM-query retry)
         out_dir = self.cfg.out_dir
@@ -1749,7 +2395,12 @@ Topic: {self.cfg.topic}
         if results:
             lines = []
             for i, s in enumerate(results, 1):
-                lines.append(f"{i}. {s.get('title','')} - {s.get('url','')}\n   {s.get('snippet','')}")
+                reason = s.get("_reason", "")
+                lines.append(
+                    f"{i}. {s.get('title','')} - {s.get('url','')}\n"
+                    f"   {s.get('snippet','')}\n"
+                    f"   reason: {reason}"
+                )
             results_path.write_text("\n".join(lines), encoding="utf-8")
             logger.info("Topic web results saved: %s", results_path)
             logger.info("Topic web results count: %s", len(results))
@@ -1760,12 +2411,14 @@ Topic: {self.cfg.topic}
                 table.add_column("Title", style="bold")
                 table.add_column("URL")
                 table.add_column("Snippet")
+                table.add_column("Reason")
                 for i, s in enumerate(results, 1):
                     table.add_row(
                         str(i),
                         s.get("title", ""),
                         s.get("url", ""),
                         s.get("snippet", ""),
+                        s.get("_reason", ""),
                     )
                 console.print(table)
             else:
@@ -1774,7 +2427,8 @@ Topic: {self.cfg.topic}
                     title = s.get("title", "")
                     url = s.get("url", "")
                     snippet = s.get("snippet", "")
-                    print(f"{i}. {title}\n   {url}\n   {snippet}\n")
+                    reason = s.get("_reason", "")
+                    print(f"{i}. {title}\n   {url}\n   {snippet}\n   reason: {reason}\n")
                 print("----------------------------------------\n")
         else:
             logger.warning("No web results found for topic search.")
@@ -1910,18 +2564,32 @@ Topic: {self.cfg.topic}
             "module",
         ]
         scored = []
+        forced = set()
         for i, sl in enumerate(outline.slides):
             title = (sl.title or "").lower()
             score = sum(1 for k in keywords if k in title)
             if sl.flowchart and sl.flowchart.steps:
                 score += 2
+            if any(k in title for k in ["pipeline", "architecture", "framework", "training", "inference"]):
+                forced.add(i)
             scored.append((score, i))
         scored.sort(reverse=True)
         target = min(
             len(outline.slides),
             max(self.cfg.min_flowcharts, min(self.cfg.max_flowcharts, len(outline.slides))),
         )
-        chosen = [i for _score, i in scored[:target]]
+        chosen = []
+        for i in forced:
+            if i not in chosen:
+                chosen.append(i)
+        for _score, i in scored:
+            if i in chosen:
+                continue
+            if len(chosen) >= target and forced:
+                break
+            chosen.append(i)
+            if len(chosen) >= target:
+                break
         return chosen
 
     def _generate_flowchart_steps(self, slide: dict, topic_hint: str = "") -> dict:
@@ -2011,7 +2679,14 @@ Topic hint: {topic_hint}
             if len(steps) < 3:
                 continue
             structure = fc.get("structure", self.cfg.flowchart_structure) or self.cfg.flowchart_structure
-            dot = build_graphviz(steps, structure=structure)
+            style = (self.cfg.diagram_style or "flowchart").lower()
+            if style == "flowchart":
+                dot = build_graphviz(steps, structure=structure)
+            else:
+                nodes = steps
+                edges = [(steps[j], steps[j + 1], "") for j in range(len(steps) - 1)]
+                rankdir = "TB" if style in {"sequence", "dag"} else "LR"
+                dot = build_graphviz_from_nodes_edges(nodes, edges, title=fc.get("caption", ""), rankdir=rankdir)
             dot_path = flow_dir / f"slide_{i+1:02d}.dot"
             png_path = flow_dir / f"slide_{i+1:02d}.png"
             dot_path.write_text(dot, encoding="utf-8")
@@ -2021,6 +2696,64 @@ Topic hint: {topic_hint}
                 logger.exception("Failed to render flowchart for slide %s", i + 1)
                 continue
             slide.flowchart_images.append(str(png_path))
+
+    def _render_planned_diagrams(self, outline: DeckOutline, diagram_plan: List[dict]) -> None:
+        """Render planned diagrams from a diagram plan.
+        
+        Args:
+            outline (DeckOutline):
+            diagram_plan (List[dict]):
+        
+        Returns:
+            None:
+        """
+        if not diagram_plan:
+            return
+        flow_dir = self.cfg.out_dir / "flowcharts"
+        flow_dir.mkdir(parents=True, exist_ok=True)
+        # Prioritize by priority then slide order
+        diagram_plan = sorted(
+            diagram_plan,
+            key=lambda d: (int(d.get("priority", 3)), int(d.get("slide_index", 9999))),
+        )
+        target = min(len(diagram_plan), max(5, min(self.cfg.slide_count, 8)))
+        rendered = 0
+        for d in diagram_plan:
+            if rendered >= target:
+                break
+            idx = d.get("slide_index")
+            if not isinstance(idx, int) or idx < 1 or idx > len(outline.slides):
+                continue
+            nodes = [str(n).strip() for n in d.get("nodes", []) if str(n).strip()]
+            edges_in = d.get("edges", [])
+            edges = []
+            for e in edges_in:
+                if isinstance(e, (list, tuple)) and len(e) >= 2:
+                    a = str(e[0])
+                    b = str(e[1])
+                    lbl = str(e[2]) if len(e) >= 3 else ""
+                    edges.append((a, b, lbl))
+            if len(nodes) < 3:
+                continue
+            # Avoid purely linear chains
+            if edges and len(edges) == len(nodes) - 1:
+                edges.append((nodes[0], nodes[-1], "context"))
+            rankdir = "LR" if d.get("type") in {"pipeline", "sequence", "block"} else "TB"
+            dot = build_graphviz_from_nodes_edges(nodes, edges, title=d.get("caption", ""), rankdir=rankdir)
+            dot_path = flow_dir / f"planned_slide_{idx:02d}_{rendered+1:02d}.dot"
+            png_path = flow_dir / f"planned_slide_{idx:02d}_{rendered+1:02d}.png"
+            dot_path.write_text(dot, encoding="utf-8")
+            try:
+                render_graphviz(dot_path, png_path)
+            except Exception:
+                logger.exception("Failed to render planned diagram for slide %s", idx)
+                continue
+            slide = outline.slides[idx - 1]
+            slide.flowchart_images.append(str(png_path))
+            cap = d.get("caption", "")
+            if cap:
+                slide.image_captions.append(cap)
+            rendered += 1
 
     def _attach_figures_from_arxiv_sources(self, outline: DeckOutline) -> None:
         """Attach figures from arxiv sources.
@@ -2177,7 +2910,7 @@ Slide titles: {[s.title for s in outline.slides]}
             Tuple[DeckOutline, Dict[str, Any]]:
         """
         progress = self._load_progress()
-        if progress and progress.get("stage") in {"titles", "slides"}:
+        if progress and progress.get("stage") in {"titles", "slides", "summary", "sources"}:
             meta = progress.get("meta", {"title": "Resume", "abstract": ""})
             merged_summary = progress.get("merged_summary", "")
             titles_obj = progress.get("titles_obj", {})
@@ -2186,8 +2919,72 @@ Slide titles: {[s.title for s in outline.slides]}
             source_label = progress.get("source_label", "Resume")
             citations_base = progress.get("citations", [])
             slides = progress.get("slides", [])
+            global_feedback = progress.get("global_feedback", "")
+            diagram_plan = progress.get("diagram_plan", [])
+            self.outline_builder.diagram_plan = diagram_plan
             logger.info("Resuming from progress.json with %s slides.", len(slides))
 
+            if progress.get("stage") in {"summary", "sources"}:
+                paper_text = progress.get("paper_text", "")
+                if not merged_summary and paper_text:
+                    merged_summary = self.outline_builder.summarize_text(
+                        paper_text,
+                        meta,
+                        global_feedback,
+                        web_context=web_context,
+                        sources_block=sources_block,
+                    )
+                titles_obj = self.outline_builder.get_slide_titles(
+                    meta,
+                    merged_summary,
+                    user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
+                    web_context=web_context,
+                    sources_block=sources_block,
+                    source_label=source_label,
+                )
+                if self.cfg.auto_comparisons:
+                    titles_obj["slide_titles"] = self.outline_builder._ensure_comparison_titles(
+                        titles_obj.get("slide_titles", [])
+                    )
+                if self.cfg.diagram_intent_aware:
+                    diagram_plan = self.outline_builder.propose_diagram_plan(
+                        titles_obj.get("slide_titles", []),
+                        merged_summary,
+                        user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
+                        web_context=web_context,
+                        sources_block=sources_block,
+                    )
+                self.outline_builder.diagram_plan = diagram_plan
+                self.outline_builder._save_progress(
+                    {
+                        "stage": "titles",
+                        "meta": meta,
+                        "merged_summary": merged_summary,
+                        "titles_obj": titles_obj,
+                        "web_context": web_context,
+                        "sources_block": sources_block,
+                        "source_label": source_label,
+                        "citations": citations_base,
+                        "diagram_plan": diagram_plan,
+                        "slides": slides,
+                        "work_dir": str(self.cfg.work_dir),
+                        "out_dir": str(self.cfg.out_dir),
+                        "global_feedback": global_feedback,
+                    }
+                )
+
+            if self.cfg.diagram_intent_aware and not diagram_plan:
+                diagram_plan = self.outline_builder.propose_diagram_plan(
+                    titles_obj.get("slide_titles", []),
+                    merged_summary,
+                    user_query=(self.cfg.user_query + "\n" + global_feedback).strip(),
+                    web_context=web_context,
+                    sources_block=sources_block,
+                )
+                self.outline_builder.diagram_plan = diagram_plan
+            experiment_refs = self.outline_builder._experiment_slide_refs(
+                titles_obj.get("slide_titles", [])
+            )
             # Continue generating remaining slides
             for idx, title in enumerate(titles_obj.get("slide_titles", []), 1):
                 if idx <= len(slides):
@@ -2203,6 +3000,7 @@ Slide titles: {[s.title for s in outline.slides]}
                         user_query=self.cfg.user_query,
                         web_context=web_context,
                         sources_block=sources_block,
+                        experiment_refs=experiment_refs,
                     )
                 )
                 self.outline_builder._save_progress(
@@ -2215,9 +3013,11 @@ Slide titles: {[s.title for s in outline.slides]}
                         "sources_block": sources_block,
                         "source_label": source_label,
                         "citations": citations_base,
+                        "diagram_plan": diagram_plan,
                         "slides": slides,
                         "work_dir": str(self.cfg.work_dir),
                         "out_dir": str(self.cfg.out_dir),
+                        "global_feedback": global_feedback,
                     }
                 )
 
@@ -2319,6 +3119,12 @@ Slide titles: {[s.title for s in outline.slides]}
             ans = input("[Render] Press Enter to render outputs or type 'q' to quit: ").strip().lower()
             if ans in {"q", "quit", "exit"}:
                 raise RuntimeError("Aborted by user.")
+
+        if self.cfg.diagram_intent_aware:
+            try:
+                self._render_planned_diagrams(outline, self.outline_builder.diagram_plan)
+            except Exception:
+                logger.exception("Planned diagram rendering failed; continuing without planned diagrams.")
 
         if self.cfg.generate_flowcharts:
             try:

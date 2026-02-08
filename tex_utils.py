@@ -222,6 +222,32 @@ def beamer_from_outline(outline: DeckOutline) -> str:
                     f"{{\\footnotesize\\textit{{Diagram:}} {_esc(sl.flowchart.caption)}}}"
                 )
 
+        tables_tex = ""
+        if getattr(sl, "tables", None):
+            for t in sl.tables:
+                cols = [str(c) for c in getattr(t, "columns", [])]
+                rows = [r for r in getattr(t, "rows", [])]
+                if not cols or not rows:
+                    continue
+                col_spec = " | ".join(["l"] * len(cols))
+                header = " & ".join([_esc(c) for c in cols]) + " \\\\ \\hline\n"
+                body_lines = []
+                for r in rows:
+                    body_lines.append(" & ".join([_esc(str(x)) for x in r]) + " \\\\")
+                body = "\n".join(body_lines)
+                title = _esc(getattr(t, "title", "") or "Results")
+                tables_tex += (
+                    "\n\\vspace{0.4em}\n"
+                    f"{{\\footnotesize\\textit{{Table:}} {title}}}\n"
+                    "\\vspace{0.2em}\n"
+                    "\\begin{tabular}{"
+                    + col_spec
+                    + "}\n\\hline\n"
+                    + header
+                    + body
+                    + "\n\\hline\n\\end{tabular}\n"
+                )
+
         notes = ""
         if sl.speaker_notes.strip():
             notes = (
@@ -237,6 +263,7 @@ def beamer_from_outline(outline: DeckOutline) -> str:
 \\end{{itemize}}
 {figs}
 {gen_imgs}
+{tables_tex}
 {notes}
 \\end{{frame}}
 """.strip()

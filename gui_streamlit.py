@@ -388,6 +388,20 @@ def main() -> None:
             flowchart_structure="linear",
             flowchart_depth=8,
             max_llm_workers=int(max_llm_workers),
+            topic="",
+            max_web_results=6,
+            max_web_pdfs=4,
+            topic_scholarly_only=False,
+            titles_only=False,
+            diagram_style="flowchart",
+            topic_must_include=[],
+            topic_exclude=[],
+            topic_allow_domains=[],
+            require_evidence=False,
+            diagram_intent_aware=False,
+            auto_comparisons=False,
+            baseline_framing=False,
+            quant_results=False,
         )
 
         cfg.out_dir.mkdir(parents=True, exist_ok=True)

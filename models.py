@@ -12,6 +12,12 @@ class FlowchartSpec(BaseModel):
     caption: str = ""
 
 
+class TableSpec(BaseModel):
+    title: str = ""
+    columns: List[str] = Field(default_factory=list)
+    rows: List[List[str]] = Field(default_factory=list)
+
+
 class SlideSpec(BaseModel):
     title: str
     bullets: List[str] = Field(default_factory=list)
@@ -22,6 +28,7 @@ class SlideSpec(BaseModel):
     flowchart: FlowchartSpec = Field(default_factory=FlowchartSpec)
     flowchart_images: List[str] = Field(default_factory=list)
     graphviz_diagram_ideas: List[str] = Field(default_factory=list)
+    tables: List[TableSpec] = Field(default_factory=list)
 
 
 class DeckOutline(BaseModel):

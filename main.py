@@ -189,6 +189,25 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Restrict topic mode to scholarly sources (arXiv/CVPR/ICML/NeurIPS/Scholar)",
     )
+    p.add_argument("--must-include", action="append", default=[], help="Keyword(s) that must appear in sources")
+    p.add_argument("--exclude", action="append", default=[], help="Keyword(s) to exclude from sources")
+    p.add_argument(
+        "--domains",
+        action="append",
+        default=[],
+        help="Allowlist domains for topic mode (repeatable or comma-separated)",
+    )
+    p.add_argument(
+        "--diagram-style",
+        default="flowchart",
+        choices=["flowchart", "block", "sequence", "dag"],
+        help="Default diagram style for method slides",
+    )
+    p.add_argument("--require-evidence", action="store_true", help="Require evidence tags for claims")
+    p.add_argument("--diagram-intent-aware", action="store_true", help="Generate intent-driven diagrams after titles")
+    p.add_argument("--auto-comparisons", action="store_true", help="Auto-add comparison slides")
+    p.add_argument("--baseline-framing", action="store_true", help="Add baseline framing prompts on experiment slides")
+    p.add_argument("--quant-results", action="store_true", help="Add quantitative results table slide")
     p.add_argument("--no-approve", "-na", action="store_true", help="Skip outline approval loop")
     p.add_argument("--skip-llm-sanity", "-llms", action="store_true", help="Skip LLM sanity check")
     p.add_argument("--model", "-m", default="nvidia/llama-3.1-nemotron-ultra-253b-v1", help="NVIDIA NIM model name")
@@ -325,9 +344,10 @@ def main() -> int:
     arxiv_inputs = _split_list_args(args.arxiv or [])
     pdf_paths = _collect_pdfs(args.pdf or [], args.pdf_dir or [])
     pdf_urls = _split_list_args(args.pdf_url or [])
-    if not arxiv_inputs and not pdf_paths and not pdf_urls and not (args.topic or "").strip():
-        logger.error("Provide sources or use --topic for topic-only mode.")
-        return 2
+    if not args.resume:
+        if not arxiv_inputs and not pdf_paths and not pdf_urls and not (args.topic or "").strip():
+            logger.error("Provide sources or use --topic for topic-only mode.")
+            return 2
 
     arxiv_ids: list[str] = []
     if arxiv_inputs:
@@ -352,6 +372,15 @@ def main() -> int:
     if args.resume:
         resume_path = Path(args.resume).expanduser().resolve()
         run_dir = resume_path.parent if resume_path.name == "outputs" else resume_path
+        resume_out = resume_path if resume_path.name == "outputs" else (run_dir / "outputs")
+        progress_path = resume_out / "progress.json"
+        if not progress_path.exists():
+            logger.error(
+                "Resume requested but progress.json not found at %s. "
+                "Re-run with sources/topic to start a new run, or resume from a run that contains progress.json.",
+                progress_path,
+            )
+            return 2
     else:
         root_dir = args.root_dir or os.environ.get("PAPER2PPT_ROOT_DIR", "~/paper2ppt_runs")
         run_root = Path(root_dir).expanduser().resolve()
@@ -404,6 +433,15 @@ def main() -> int:
         max_web_pdfs=max(0, args.max_web_pdfs),
         topic_scholarly_only=bool(args.topic_scholarly_only),
         titles_only=bool(args.titles_only),
+        diagram_style=args.diagram_style,
+        topic_must_include=_split_list_args(args.must_include or []),
+        topic_exclude=_split_list_args(args.exclude or []),
+        topic_allow_domains=_split_list_args(args.domains or []),
+        require_evidence=bool(args.require_evidence),
+        diagram_intent_aware=bool(args.diagram_intent_aware),
+        auto_comparisons=bool(args.auto_comparisons),
+        baseline_framing=bool(args.baseline_framing),
+        quant_results=bool(args.quant_results),
     )
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)

@@ -13,7 +13,9 @@ It also support Topic-based, where you give a topic as an input, based on web se
 - arXiv, local PDF, and PDF URL inputs (single or multiple)
 - Query-guided decks that answer a user question (not just summaries)
 - Optional web search with citations
-- Speaker notes, figure suggestions, and flowchart diagrams
+- Speaker notes, figure suggestions, and diagram generation (Graphviz)
+- Claim→evidence alignment for reviewer-safe slides
+- Comparison-first visuals and baseline framing (optional)
 - Robust slide generation with retries and interactive fallbacks
 - Organized run directories with logs, outlines, and resume support
 - Topic based research using web search and slide deck generation using scholarly articles as references for the same.
@@ -183,7 +185,7 @@ For flowchart generation, set `NVIDIA_API_KEY` in your environment.
 
 ## Flowchart & Diagram Generation (Graphviz)
 Paper2ppt can generate **Graphviz flowcharts** for key slides to deepen understanding of methods and system internals.
-The LLM decides the flowchart **structure** (linear/branch/cycle) and **step count** per slide.
+The LLM decides the flowchart **structure** (linear/branch/cycle) and **step count** per slide, but you can enforce a **diagram style** to keep visuals consistent across decks.
 - Linear - A straight one-way flow-chart.
 - Branched - Where a cell in the flow-chart can have multiple inputs/outputs.
 - Cycle - A flow-chart with loops. 
@@ -202,6 +204,36 @@ The LLM also proposes **other diagram types** (Graphviz-friendly) per slide, suc
 - Decision trees
 - Module interaction graphs
 - Ablation/result relationship graphs
+Use `--diagram-style {flowchart,block,sequence,dag}` to force a predictable diagram style across method slides.
+Slides with titles containing keywords like `pipeline`, `architecture`, `framework`, `training`, or `inference` will always receive a diagram.
+Use `--diagram-intent-aware` to generate intent-driven, non-linear diagrams (process/comparison/abstraction) after titles are decided.
+
+### New Diagram + Rigor Features
+These flags make decks more review-ready and diagram-heavy:
+
+**`--diagram-intent-aware`**
+- After slide titles are fixed, the LLM proposes 5–8 diagrams with explicit intent: `process`, `comparison`, or `abstraction`.
+- Diagrams are **non-linear** (not just a chain) and are attached to the most relevant slides.
+- Great for turning method text into actual diagrams.
+
+**`--require-evidence`**
+- Any bullet with a performance/accuracy/efficiency claim must include evidence.
+- The system appends `(source: URL)` or `(evidence: Slide N - Results)` tags.
+- If evidence is missing, bullets are flagged with `[NEEDS EVIDENCE]`.
+
+**`--auto-comparisons`**
+- Ensures key comparison slides exist (e.g., “Full Video vs Key Frames” and “Uniform Sampling vs Learned Selection”).
+- Strengthens persuasion by forcing contrast.
+
+**`--baseline-framing`**
+- On experiment/result slides, injects:
+  - “Why this baseline?”
+  - “What does it control for?”
+- Improves methodological clarity.
+
+**`--quant-results`**
+- Adds a quantitative results table slide.
+- Extracts concrete numbers from sources into a structured table (Method, Dataset, Metric, Score).
 
 ## Topic-Only Research Mode
 You can start from a topic instead of providing sources. Paper2ppt will:
@@ -213,7 +245,7 @@ You can start from a topic instead of providing sources. Paper2ppt will:
 In this mode, the system behaves like a lightweight research agent:
 - It rewrites your topic into a focused query (with sub-questions and keywords).
 - It asks for user approval and allows feedback to refine the query.
-- It gathers a small set of credible sources (optionally restricted to scholarly domains).
+- It gathers a small set of credible sources (optionally restricted to scholarly domains or a custom allowlist).
 - It extracts full text, summarizes, and synthesizes a coherent narrative.
 - It then builds slides that start from fundamentals and progress to deep technical content, results, limitations, and future directions.
 
@@ -267,14 +299,17 @@ Render Beamer LaTeX -> Compile PDF
 - Use `--max-web-pdfs` to cap downloads for speed.
 - Topic mode stores the expanded query in `outputs/query.txt` and uses it as the deck’s guiding question.
 - The approved query is saved to `work/query.txt` and `outputs/query.txt`.
-- Use `--topic-scholarly-only` to reduce noise and keep sources to reputable venues (for example - CVPR, ICML, NeurIPS, arXiv, Google Scholar etc.).
+- Use `--topic-scholarly-only` to reduce noise and keep sources to reputable venues (for example - CVPR, ICML, NeurIPS, arXiv, Google Scholar, OpenReview, ACL).
+- Use `--domains` to provide a custom domain allowlist (e.g., `arxiv.org`, `openaccess.thecvf.com`, `openreview.net`).
+- Use `--must-include` and `--exclude` to keep results on-topic.
 - Debug logs:
   - LLM-suggested search queries are printed to console.
-  - Web results are printed and saved to `outputs/topic_web_results.txt`.
+  - Web results are printed and saved to `outputs/topic_web_results.txt` with ranking reasons (venue/recency/citation hints).
+  - `progress.json` is updated throughout the run for reliable resume.
 
 ### What Happens Under the Hood (Topic Mode)
 1. **Topic expansion (LLM):** Your topic is expanded into a research-grade query with key sub-questions and keywords; you can approve or refine it.
-2. **Source discovery:** Web search collects candidate sources; if few results, the LLM proposes keyword queries and the search is retried. Optional scholarly-only filtering keeps arXiv/CVPR/ICML/NeurIPS/Scholar.
+2. **Source discovery:** Web search collects candidate sources; if few results, the LLM proposes keyword queries and the search is retried. Optional scholarly-only filtering or custom domain allowlists keep sources reputable and focused.
 3. **Source acquisition:** arXiv links are downloaded as LaTeX sources; PDFs are fetched into `work/web_pdfs/`.
 4. **Text extraction:** LaTeX is flattened; PDFs are parsed into text (plus image references).
 5. **Summarization:** The corpus is chunked and summarized, then merged.
@@ -375,14 +410,24 @@ Notes on structure:
 - `-maxres`, `--max-web-results` max web results to consider in topic mode (default `6`)
 - `-maxpdf`, `--max-web-pdfs` max PDFs to download in topic mode (default `4`)
 - `-tso`, `--topic-scholarly-only` restrict topic mode to scholarly sources (arXiv/CVPR/ICML/NeurIPS/Scholar)
+- `--must-include` keyword(s) that must appear in sources (repeatable)
+- `--exclude` keyword(s) to exclude from sources (repeatable)
+- `--domains` allowlist domains for topic mode (repeatable or comma-separated)
 - `-gf`, `--generate-flowcharts` generate Graphviz flowcharts for key slides
 - `-gi`, `--generate-images` alias for `--generate-flowcharts`
 - `-minf`, `--min-flowcharts` minimum flowcharts per deck (default `3`)
 - `-maxf`, `--max-flowcharts` maximum flowcharts per deck (default `4`)
+- `--diagram-style` force diagram style for method slides (`flowchart|block|sequence|dag`)
+- `--diagram-intent-aware` generate intent-driven diagrams after titles
+- `--require-evidence` flag ungrounded claims and require evidence tags
+- `--auto-comparisons` auto-add comparison slides (e.g., full video vs key frames)
+- `--baseline-framing` add baseline framing bullets on experiment slides
+- `--quant-results` add a quantitative results table slide (numbers pulled from sources)
 - `--root-dir` root directory for all runs (default `$PAPER2PPT_ROOT_DIR` or `~/paper2ppt_runs`)
 - `-wdir`, `--work-dir` working directory (overrides `--root-dir`)
 - `-odir`, `--out-dir` output directory (overrides `--root-dir`)
 - `-msc`, `--max-summary-chunks` cap for LLM summary chunks (default `30`)
+- `-workers`, `--max-llm-workers` max parallel LLM calls (default `4`)
 - `-na`, `--no-approve` skip outline approval loop
 - `-llms`, `--skip-llm-sanity` skip LLM sanity check
 - `-m`, `--model` NVIDIA NIM model name
