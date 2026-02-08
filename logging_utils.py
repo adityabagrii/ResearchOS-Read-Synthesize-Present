@@ -9,7 +9,15 @@ from typing import Optional
 def setup_logging(verbose: bool = False, log_path: Optional[Path] = None) -> None:
     """Configure root logging for the app."""
     level = logging.DEBUG if verbose else logging.INFO
-    handlers = [logging.StreamHandler()]
+    # Prefer rich console logging if available for colored output
+    try:
+        from rich.logging import RichHandler  # type: ignore
+
+        console_handler = RichHandler(rich_tracebacks=False, markup=True)
+    except Exception:
+        console_handler = logging.StreamHandler()
+
+    handlers = [console_handler]
     if log_path is not None:
         log_path = Path(log_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -30,8 +38,9 @@ def setup_logging(verbose: bool = False, log_path: Optional[Path] = None) -> Non
                     "Continuing without file logging.",
                     file=sys.stderr,
                 )
+    # RichHandler already formats level/name; keep a clean message format
     logging.basicConfig(
         level=level,
-        format="[%(levelname)s] %(message)s",
+        format="%(message)s",
         handlers=handlers,
     )
