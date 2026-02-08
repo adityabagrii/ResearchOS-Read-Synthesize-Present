@@ -45,13 +45,17 @@ def extract_pdf_content(pdf_path: Path, out_dir: Path, max_pages: int | None = N
 
         for idx, img in enumerate(page.get_images(full=True), 1):
             xref = img[0]
-            pix = fitz.Pixmap(doc, xref)
-            if pix.n >= 5:
-                pix = fitz.Pixmap(fitz.csRGB, pix)
-            img_path = images_dir / f"page_{pno + 1}_img_{idx}.png"
-            pix.save(img_path.as_posix())
-            pix = None
-            images.append({"page": pno + 1, "path": str(img_path)})
+            try:
+                pix = fitz.Pixmap(doc, xref)
+                if pix.n >= 5:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                img_path = images_dir / f"page_{pno + 1}_img_{idx}.png"
+                pix.save(img_path.as_posix())
+                pix = None
+                images.append({"page": pno + 1, "path": str(img_path)})
+            except Exception:
+                # Skip images that PyMuPDF cannot save due to unsupported colorspace
+                continue
 
     doc.close()
 

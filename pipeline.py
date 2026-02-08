@@ -47,6 +47,19 @@ except Exception:
 logger = logging.getLogger("paper2ppt")
 TQDM_NCOLS = 100
 
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+except Exception:  # pragma: no cover
+    Console = None
+    Panel = None
+    Table = None
+
+
+def _get_console():
+    return Console() if Console else None
+
 
 @dataclass
 class RunConfig:
@@ -1295,10 +1308,15 @@ Topic: {self.cfg.topic}
                 query_list = []
 
             if query_list:
-                print("\n----------QUERIES BY LLM----------------")
-                for i, q in enumerate(query_list, 1):
-                    print(f"{i}. {q}")
-                print("----------------------------------------\n")
+                console = _get_console()
+                if console and Panel:
+                    body = "\n".join([f"{i}. {q}" for i, q in enumerate(query_list, 1)])
+                    console.print(Panel(body, title="QUERIES BY LLM", expand=False))
+                else:
+                    print("\n----------QUERIES BY LLM----------------")
+                    for i, q in enumerate(query_list, 1):
+                        print(f"{i}. {q}")
+                    print("----------------------------------------\n")
                 aggregated = []
                 for q in query_list:
                     q = str(q).strip()
@@ -1340,13 +1358,29 @@ Topic: {self.cfg.topic}
             results_path.write_text("\n".join(lines), encoding="utf-8")
             logger.info("Topic web results saved: %s", results_path)
             logger.info("Topic web results count: %s", len(results))
-            print("\n-----------WEB SEARCH RESULTS------------")
-            for i, s in enumerate(results, 1):
-                title = s.get("title", "")
-                url = s.get("url", "")
-                snippet = s.get("snippet", "")
-                print(f"{i}. {title}\n   {url}\n   {snippet}\n")
-            print("----------------------------------------\n")
+            console = _get_console()
+            if console and Table:
+                table = Table(title="WEB SEARCH RESULTS", show_lines=True)
+                table.add_column("#", style="cyan", no_wrap=True)
+                table.add_column("Title", style="bold")
+                table.add_column("URL")
+                table.add_column("Snippet")
+                for i, s in enumerate(results, 1):
+                    table.add_row(
+                        str(i),
+                        s.get("title", ""),
+                        s.get("url", ""),
+                        s.get("snippet", ""),
+                    )
+                console.print(table)
+            else:
+                print("\n-----------WEB SEARCH RESULTS------------")
+                for i, s in enumerate(results, 1):
+                    title = s.get("title", "")
+                    url = s.get("url", "")
+                    snippet = s.get("snippet", "")
+                    print(f"{i}. {title}\n   {url}\n   {snippet}\n")
+                print("----------------------------------------\n")
         else:
             results_path.write_text("No results.\n", encoding="utf-8")
             logger.warning("No web results found for topic search.")
