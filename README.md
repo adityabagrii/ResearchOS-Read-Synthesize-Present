@@ -10,6 +10,8 @@ ResearchOS is an **agentic CLI** that turns **arXiv papers, local PDFs, PDF URLs
 
 using large language models (LLMs).
 
+Full documentation: [Codebase Guide](docs/codebase_guide.md)
+
 ### Core Capabilities
 - **Single- or multi-source synthesis**
 - **Query-guided presentations** (answers a question, not just summaries)
