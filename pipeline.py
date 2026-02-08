@@ -3415,7 +3415,22 @@ Sources:
 {ctx.sources_block}
 """.strip()
         raw = safe_invoke(logger, self.llm, prompt, retries=6)
-        return self._write_markdown("reading_notes.md", raw)
+        notes_path = self._write_markdown("reading_notes.md", raw)
+        if self.cfg.generate_flowcharts:
+            try:
+                diagrams = self.generate_reading_diagrams(ctx)
+                if diagrams:
+                    md = notes_path.read_text(encoding="utf-8").rstrip() + "\n\n## Diagrams\n"
+                    for d in diagrams:
+                        rel = Path(d["png"]).as_posix()
+                        cap = d.get("caption", "")
+                        md += f"\n![{cap}]({rel})\n"
+                        if cap:
+                            md += f"_Caption: {cap}_\n"
+                    notes_path.write_text(md.strip() + "\n", encoding="utf-8")
+            except Exception:
+                logger.exception("Reading diagram generation failed; continuing without diagrams.")
+        return notes_path
 
     def generate_viva_notes(self, ctx: PaperContext) -> Path:
         prompt = f"""
@@ -3439,6 +3454,90 @@ Sources:
 """.strip()
         raw = safe_invoke(logger, self.llm, prompt, retries=6)
         return self._write_markdown("viva_notes.md", raw)
+
+    def generate_reading_diagrams(self, ctx: PaperContext) -> List[dict]:
+        """Generate and render diagrams for reading notes."""
+        prompt = f"""
+Return ONLY JSON.
+
+Schema:
+{{
+  "diagrams": [
+    {{
+      "type": "comparison|taxonomy|pipeline|problem_solution|flowchart",
+      "title": "string",
+      "nodes": ["string", "..."],
+      "edges": [["from","to","label"], "..."],
+      "caption": "string"
+    }}
+  ]
+}}
+
+Rules:
+- Provide 2-3 diagrams total.
+- Keep nodes short (2-6 words).
+- Use 6-10 nodes per diagram.
+- Use edges to encode relationships (label can be empty).
+- Prefer diagrams that explain the problem and method.
+
+Title: {ctx.meta.get('title', '')}
+Abstract: {ctx.meta.get('abstract', '')}
+Summary: {ctx.merged_summary[:3000]}
+Sources:
+{ctx.sources_block}
+""".strip()
+        raw = safe_invoke(logger, self.llm, prompt, retries=6)
+        js = OutlineBuilder.try_extract_json(raw)
+        if js is None:
+            fix = safe_invoke(
+                logger,
+                self.llm,
+                "Return ONLY valid JSON for the schema. Fix this:\n" + raw[:1800],
+                retries=6,
+            )
+            js = OutlineBuilder.try_extract_json(fix)
+        if js is None:
+            return []
+        try:
+            obj = json.loads(js)
+        except Exception:
+            return []
+
+        diagrams = obj.get("diagrams", [])
+        if not isinstance(diagrams, list) or not diagrams:
+            return []
+
+        flow_dir = self.cfg.out_dir / "flowcharts"
+        flow_dir.mkdir(parents=True, exist_ok=True)
+        rendered: List[dict] = []
+        for i, d in enumerate(diagrams[:3], 1):
+            nodes = [str(n).strip() for n in d.get("nodes", []) if str(n).strip()]
+            if len(nodes) < 3:
+                continue
+            edges_raw = d.get("edges", [])
+            edges = []
+            if isinstance(edges_raw, list):
+                for e in edges_raw:
+                    if isinstance(e, list) and len(e) >= 2:
+                        a = str(e[0]).strip()
+                        b = str(e[1]).strip()
+                        lbl = str(e[2]).strip() if len(e) > 2 else ""
+                        if a and b:
+                            edges.append((a, b, lbl))
+            title = str(d.get("title", "")).strip()
+            dtype = str(d.get("type", "pipeline")).strip().lower()
+            rankdir = "LR" if dtype in {"pipeline", "flowchart"} else "TB"
+            dot = build_graphviz_from_nodes_edges(nodes, edges, title=title, rankdir=rankdir)
+            dot_path = flow_dir / f"reading_diagram_{i:02d}.dot"
+            png_path = flow_dir / f"reading_diagram_{i:02d}.png"
+            dot_path.write_text(dot, encoding="utf-8")
+            try:
+                render_graphviz(dot_path, png_path)
+            except Exception:
+                logger.exception("Failed to render reading diagram %s", i)
+                continue
+            rendered.append({"png": str(png_path.relative_to(self.cfg.out_dir)), "caption": title or d.get("caption", "")})
+        return rendered
 
     def generate_experiment_description(self, ctx: PaperContext) -> Path:
         prompt = f"""

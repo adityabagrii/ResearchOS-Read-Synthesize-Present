@@ -194,6 +194,12 @@ Paper2ppt now includes several “chat-style” modes that generate structured m
 # Reading notes (no slides)
 paper2ppt -a 2401.12345 --read
 
+# Reading notes + embedded diagrams
+paper2ppt -a 2401.12345 --read --generate-flowcharts
+
+# Reading notes + intent-aware DAG diagrams (must include --generate-flowcharts to embed images)
+paper2ppt -a 2401.12345 --read --generate-flowcharts --diagram-intent-aware --diagram-style dag
+
 # Viva prep (no slides)
 paper2ppt -a 2401.12345 --viva-mode
 
