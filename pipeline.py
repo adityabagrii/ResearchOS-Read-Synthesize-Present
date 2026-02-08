@@ -58,6 +58,11 @@ except Exception:  # pragma: no cover
 
 
 def _get_console():
+    """Get console.
+    
+    Returns:
+        Any:
+    """
     return Console() if Console else None
 
 
@@ -99,11 +104,27 @@ class RunConfig:
 
 class OutlineJSONStore:
     def __init__(self, out_dir: Path) -> None:
+        """Initialize.
+        
+        Args:
+            out_dir (Path):
+        
+        Returns:
+            None:
+        """
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self._index = 0
 
     def save(self, outline: DeckOutline) -> Path:
+        """Save.
+        
+        Args:
+            outline (DeckOutline):
+        
+        Returns:
+            Path:
+        """
         self._index += 1
         path = self.out_dir / f"outline-{self._index}.json"
         with path.open("w", encoding="utf-8") as f:
@@ -112,24 +133,69 @@ class OutlineJSONStore:
 
 
 def _progress_path(out_dir: Path) -> Path:
+    """Function progress path.
+    
+    Args:
+        out_dir (Path):
+    
+    Returns:
+        Path:
+    """
     return Path(out_dir) / "progress.json"
 
 
 class ArxivClient:
     def get_metadata(self, arxiv_id: str) -> Dict[str, Any]:
+        """Get metadata.
+        
+        Args:
+            arxiv_id (str):
+        
+        Returns:
+            Dict[str, Any]:
+        """
         return get_arxiv_metadata(arxiv_id)
 
     def download_source(self, arxiv_id: str, out_dir: Path) -> Path:
+        """Download source.
+        
+        Args:
+            arxiv_id (str):
+            out_dir (Path):
+        
+        Returns:
+            Path:
+        """
         return download_and_extract_arxiv_source(arxiv_id, out_dir)
 
 
 class OutlineBuilder:
     def __init__(self, llm, cfg: RunConfig, arxiv_client: ArxivClient) -> None:
+        """Initialize.
+        
+        Args:
+            llm (Any):
+            cfg (RunConfig):
+            arxiv_client (ArxivClient):
+        
+        Returns:
+            None:
+        """
         self.llm = llm
         self.cfg = cfg
         self.arxiv_client = arxiv_client
 
     def _checkpoint(self, label: str, idx: int | None = None, total: int | None = None) -> None:
+        """Function checkpoint.
+        
+        Args:
+            label (str):
+            idx (int | None):
+            total (int | None):
+        
+        Returns:
+            None:
+        """
         if not self.cfg.interactive:
             return
         if idx is not None and total is not None:
@@ -143,12 +209,28 @@ class OutlineBuilder:
             raise RuntimeError("Aborted by user.")
 
     def _prompt_feedback(self, label: str) -> str:
+        """Function prompt feedback.
+        
+        Args:
+            label (str):
+        
+        Returns:
+            str:
+        """
         if not self.cfg.interactive:
             return ""
         ans = input(f"[{label}] Provide guidance (or press Enter to skip): ").strip()
         return ans
 
     def _save_progress(self, state: dict) -> None:
+        """Save progress.
+        
+        Args:
+            state (dict):
+        
+        Returns:
+            None:
+        """
         try:
             path = _progress_path(self.cfg.out_dir)
             with path.open("w", encoding="utf-8") as f:
@@ -158,6 +240,15 @@ class OutlineBuilder:
 
     @staticmethod
     def _print_section(title: str, lines: List[str]) -> None:
+        """Print section.
+        
+        Args:
+            title (str):
+            lines (List[str]):
+        
+        Returns:
+            None:
+        """
         width = 96
         print("\n" + "=" * width)
         print(title)
@@ -174,11 +265,29 @@ class OutlineBuilder:
 
     @staticmethod
     def chunk_text(s: str, chunk_chars: int) -> List[str]:
+        """Function chunk text.
+        
+        Args:
+            s (str):
+            chunk_chars (int):
+        
+        Returns:
+            List[str]:
+        """
         s = s.strip()
         return [s[i : i + chunk_chars] for i in range(0, len(s), chunk_chars)]
 
     @staticmethod
     def _preview_text(s: str, max_len: int = 60) -> str:
+        """Function preview text.
+        
+        Args:
+            s (str):
+            max_len (int):
+        
+        Returns:
+            str:
+        """
         s = re.sub(r"\s+", " ", (s or "").strip())
         if len(s) <= max_len:
             return s
@@ -186,6 +295,14 @@ class OutlineBuilder:
 
     @staticmethod
     def try_extract_json(text: str) -> Optional[str]:
+        """Function try extract json.
+        
+        Args:
+            text (str):
+        
+        Returns:
+            Optional[str]:
+        """
         t = (text or "").strip()
         if t.startswith("```"):
             t = re.sub(r"^```[a-zA-Z]*\n", "", t)
@@ -214,6 +331,19 @@ class OutlineBuilder:
         web_context: str = "",
         sources_block: str = "",
     ) -> str:
+        """Summarize chunk.
+        
+        Args:
+            i (int):
+            chunk (str):
+            meta (dict):
+            user_query (str):
+            web_context (str):
+            sources_block (str):
+        
+        Returns:
+            str:
+        """
         for size in [1500, 1200, 900, 700, 500, 350]:
             snippet = chunk[:size]
             query_block = f"\nUser query: {user_query}\n" if user_query else ""
@@ -266,6 +396,20 @@ Chunk:
         sources_block: str = "",
         source_label: str = "",
     ) -> dict:
+        """Get slide titles.
+        
+        Args:
+            meta (dict):
+            merged_summary (str):
+            feedback (str):
+            user_query (str):
+            web_context (str):
+            sources_block (str):
+            source_label (str):
+        
+        Returns:
+            dict:
+        """
         summary = re.sub(r"\s+", " ", merged_summary).strip()[:1200]
         feedback_block = f"\nUser feedback:\n{feedback}\n" if feedback.strip() else ""
         query_block = f"\nUser query:\n{user_query}\n" if user_query else ""
@@ -392,6 +536,22 @@ Summary: {summary}
         web_context: str = "",
         sources_block: str = "",
     ) -> dict:
+        """Function make slide.
+        
+        Args:
+            meta (dict):
+            slide_title (str):
+            merged_summary (str):
+            idx (int):
+            feedback (str):
+            include_speaker_notes (bool):
+            user_query (str):
+            web_context (str):
+            sources_block (str):
+        
+        Returns:
+            dict:
+        """
         ctx = re.sub(r"\s+", " ", merged_summary).strip()[:1600]
         feedback_block = f"\nUser feedback:\n{feedback}\n" if feedback.strip() else ""
         query_block = f"\nUser query:\n{user_query}\n" if user_query else ""
@@ -453,6 +613,11 @@ Generate slide #{idx}: {slide_title}
 """.strip()
 
         def _fallback_slide() -> dict:
+            """Function fallback slide.
+            
+            Returns:
+                dict:
+            """
             bullets = [f"TBD: {slide_title} (generation failed)"]
             while len(bullets) < self.cfg.bullets_per_slide:
                 bullets.append("TBD: regenerate this slide")
@@ -557,6 +722,11 @@ Generate slide #{idx}: {slide_title}
         str,
         List[str],
     ]:
+        """Build outline once.
+        
+        Returns:
+            Tuple[DeckOutline, Dict[str, Any], str, Dict[str, Any], str, List[Dict[str, str]], str, str, List[str]]:
+        """
         sources: List[Dict[str, Any]] = []
 
         if self.cfg.arxiv_ids:
@@ -897,6 +1067,21 @@ Generate slide #{idx}: {slide_title}
         sources_block: str = "",
         source_label: str = "",
     ) -> dict:
+        """Function regenerate titles with feedback.
+        
+        Args:
+            meta (dict):
+            merged_summary (str):
+            prev_titles (List[str]):
+            feedback (str):
+            user_query (str):
+            web_context (str):
+            sources_block (str):
+            source_label (str):
+        
+        Returns:
+            dict:
+        """
         summary = re.sub(r"\s+", " ", merged_summary).strip()[:1200]
         prev = "\n".join([f"{i+1}. {t}" for i, t in enumerate(prev_titles)])
         query_block = f"\nUser query:\n{user_query}\n" if user_query else ""
@@ -941,6 +1126,17 @@ Summary: {summary}
 
 class FigureAsset:
     def __init__(self, tex_path: str, resolved_path: str, caption: str, label: Optional[str]) -> None:
+        """Initialize.
+        
+        Args:
+            tex_path (str):
+            resolved_path (str):
+            caption (str):
+            label (Optional[str]):
+        
+        Returns:
+            None:
+        """
         self.tex_path = tex_path
         self.resolved_path = resolved_path
         self.caption = caption
@@ -955,6 +1151,14 @@ class FigurePlanner:
 
     @staticmethod
     def _strip_tex(s: str) -> str:
+        """Strip tex.
+        
+        Args:
+            s (str):
+        
+        Returns:
+            str:
+        """
         s = re.sub(r"(?m)(?<!\\\\)%.*$", "", s)
         s = re.sub(r"\\\\[a-zA-Z]+\\*?(?:\\[[^\\]]*\\])?(?:\\{[^}]*\\})?", " ", s)
         s = s.replace("{", " ").replace("}", " ").replace("\\\\", " ")
@@ -963,6 +1167,15 @@ class FigurePlanner:
 
     @staticmethod
     def resolve_graphic_path(src_dir: Path, tex_ref: str) -> Optional[Path]:
+        """Resolve graphic path.
+        
+        Args:
+            src_dir (Path):
+            tex_ref (str):
+        
+        Returns:
+            Optional[Path]:
+        """
         tex_ref = tex_ref.strip()
         candidates = [
             src_dir / tex_ref,
@@ -983,6 +1196,15 @@ class FigurePlanner:
         return None
 
     def extract_figures(self, flat_tex: str, src_dir: Path) -> List[FigureAsset]:
+        """Extract figures.
+        
+        Args:
+            flat_tex (str):
+            src_dir (Path):
+        
+        Returns:
+            List[FigureAsset]:
+        """
         figs: List[FigureAsset] = []
         for env in self.FIG_ENV_RE.findall(flat_tex):
             cap_m = self.CAP_RE.search(env)
@@ -1003,6 +1225,17 @@ class FigurePlanner:
         return list(uniq.values())
 
     def plan_with_llm(self, llm, outline: DeckOutline, fig_assets: List[FigureAsset], max_figs: int = 12) -> dict:
+        """Plan with llm.
+        
+        Args:
+            llm (Any):
+            outline (DeckOutline):
+            fig_assets (List[FigureAsset]):
+            max_figs (int):
+        
+        Returns:
+            dict:
+        """
         if not fig_assets:
             return {"slides": []}
 
@@ -1069,6 +1302,16 @@ Available figures (filename: caption):
         return cleaned
 
     def materialize(self, fig_plan: dict, fig_assets: List[FigureAsset], out_dir: Path) -> dict:
+        """Materialize.
+        
+        Args:
+            fig_plan (dict):
+            fig_assets (List[FigureAsset]):
+            out_dir (Path):
+        
+        Returns:
+            dict:
+        """
         out_dir = Path(out_dir)
         fig_dir = out_dir / "figures"
         fig_dir.mkdir(parents=True, exist_ok=True)
@@ -1101,6 +1344,15 @@ Available figures (filename: caption):
 class Renderer:
     @staticmethod
     def slugify_filename(s: str, max_len: int = 80) -> str:
+        """Slugify filename.
+        
+        Args:
+            s (str):
+            max_len (int):
+        
+        Returns:
+            str:
+        """
         s = s.strip()
         s = re.sub(r"[^a-zA-Z0-9]+", "_", s)
         s = s.strip("_")
@@ -1110,6 +1362,14 @@ class Renderer:
 
     @staticmethod
     def compile_beamer(tex_path: Path) -> Optional[Path]:
+        """Compile beamer.
+        
+        Args:
+            tex_path (Path):
+        
+        Returns:
+            Optional[Path]:
+        """
         tex_path = Path(tex_path)
 
         if shutil.which("pdflatex") is None:
@@ -1127,6 +1387,15 @@ class Renderer:
         return pdf_path if pdf_path.exists() else None
 
     def render(self, outline: DeckOutline, out_dir: Path) -> Tuple[Path, Optional[Path]]:
+        """Render.
+        
+        Args:
+            outline (DeckOutline):
+            out_dir (Path):
+        
+        Returns:
+            Tuple[Path, Optional[Path]]:
+        """
         filename_base = self.slugify_filename(outline.deck_title)
         logger.info("Rendering Beamer LaTeX...")
         tex = beamer_from_outline(outline)
@@ -1145,6 +1414,19 @@ class Renderer:
         out_dir: Path,
         fig_planner: FigurePlanner,
     ) -> Tuple[Path, Optional[Path]]:
+        """Render with figs.
+        
+        Args:
+            llm (Any):
+            outline (DeckOutline):
+            arxiv_id (str):
+            work_dir (Path):
+            out_dir (Path):
+            fig_planner (FigurePlanner):
+        
+        Returns:
+            Tuple[Path, Optional[Path]]:
+        """
         filename_base = self.slugify_filename(outline.deck_title)
         logger.info("Preparing figures from arXiv source...")
         src_dir = work_dir / "arxiv_source"
@@ -1174,6 +1456,15 @@ class Renderer:
 
 class Pipeline:
     def __init__(self, cfg: RunConfig, llm) -> None:
+        """Initialize.
+        
+        Args:
+            cfg (RunConfig):
+            llm (Any):
+        
+        Returns:
+            None:
+        """
         self.cfg = cfg
         self.llm = llm
         self.arxiv_client = ArxivClient()
@@ -1183,6 +1474,11 @@ class Pipeline:
         self.renderer = Renderer()
 
     def sanity_checks(self) -> None:
+        """Function sanity checks.
+        
+        Returns:
+            None:
+        """
         logger.info("Running sanity checks...")
         if self.cfg.slide_count < 2:
             raise ValueError("slide_count must be >= 2")
@@ -1204,6 +1500,11 @@ class Pipeline:
                 raise RuntimeError("LLM sanity check failed. Ensure your NVIDIA_API_KEY and model are valid.")
 
     def _load_progress(self) -> Optional[dict]:
+        """Load progress.
+        
+        Returns:
+            Optional[dict]:
+        """
         if not self.cfg.resume_path:
             return None
         out_dir = self.cfg.resume_path
@@ -1219,7 +1520,11 @@ class Pipeline:
             return None
 
     def prepare_topic_sources(self) -> None:
-        """Expand a topic, search the web, and collect sources for a topic-only run."""
+        """Prepare topic sources.
+        
+        Returns:
+            None:
+        """
         if not self.cfg.topic:
             return
 
@@ -1267,6 +1572,15 @@ User feedback: {ans}
         clean_query = re.sub(r"\s+", " ", clean_query).strip()
 
         def _keyword_query(text: str, max_terms: int = 12) -> str:
+            """Function keyword query.
+            
+            Args:
+                text (str):
+                max_terms (int):
+            
+            Returns:
+                str:
+            """
             stop = {
                 "the", "and", "or", "of", "in", "to", "for", "with", "on", "by", "from",
                 "a", "an", "is", "are", "was", "were", "be", "as", "that", "this", "these",
@@ -1479,6 +1793,14 @@ Topic: {self.cfg.topic}
 
     @staticmethod
     def print_outline(outline: DeckOutline) -> None:
+        """Print outline.
+        
+        Args:
+            outline (DeckOutline):
+        
+        Returns:
+            None:
+        """
         width = 96
         print("\n" + "=" * width)
         print(f"DECK: {outline.deck_title}")
@@ -1503,6 +1825,14 @@ Topic: {self.cfg.topic}
         print("\n" + "=" * width)
 
     def _select_flowchart_indices(self, outline: DeckOutline) -> List[int]:
+        """Select flowchart indices.
+        
+        Args:
+            outline (DeckOutline):
+        
+        Returns:
+            List[int]:
+        """
         keywords = [
             "method",
             "approach",
@@ -1534,6 +1864,15 @@ Topic: {self.cfg.topic}
         return chosen
 
     def _generate_flowchart_steps(self, slide: dict, topic_hint: str = "") -> dict:
+        """Generate flowchart steps.
+        
+        Args:
+            slide (dict):
+            topic_hint (str):
+        
+        Returns:
+            dict:
+        """
         max_steps = max(6, self.cfg.flowchart_depth)
         prompt = f"""
 You are an expert researcher designing a diagram that improves understanding of the entire presentation.
@@ -1580,6 +1919,14 @@ Topic hint: {topic_hint}
         return obj
 
     def _render_flowcharts(self, outline: DeckOutline) -> None:
+        """Render flowcharts.
+        
+        Args:
+            outline (DeckOutline):
+        
+        Returns:
+            None:
+        """
         flow_dir = self.cfg.out_dir / "flowcharts"
         flow_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1615,7 +1962,14 @@ Topic hint: {topic_hint}
             slide.flowchart_images.append(str(png_path))
 
     def _attach_figures_from_arxiv_sources(self, outline: DeckOutline) -> None:
-        """Select and attach figures from all available arXiv sources using LLM + captions."""
+        """Attach figures from arxiv sources.
+        
+        Args:
+            outline (DeckOutline):
+        
+        Returns:
+            None:
+        """
         if not self.cfg.arxiv_ids:
             return
         fig_assets = []
@@ -1649,7 +2003,14 @@ Topic hint: {topic_hint}
                     outline.slides[idx - 1].image_captions.append(str(caption))
 
     def _generate_deck_diagrams(self, outline: DeckOutline) -> None:
-        """Generate 2-3 deck-level diagrams that summarize key ideas across slides."""
+        """Generate deck diagrams.
+        
+        Args:
+            outline (DeckOutline):
+        
+        Returns:
+            None:
+        """
         prompt = f"""
 You are designing diagrams that carry core information for the entire deck.
 Generate 2-3 diagram specs that visually explain the problem, solution, and comparisons.
@@ -1737,6 +2098,14 @@ Slide titles: {[s.title for s in outline.slides]}
             )
 
     def build_outline_with_approval(self, max_rounds: int = 3) -> Tuple[DeckOutline, Dict[str, Any]]:
+        """Build outline with approval.
+        
+        Args:
+            max_rounds (int):
+        
+        Returns:
+            Tuple[DeckOutline, Dict[str, Any]]:
+        """
         progress = self._load_progress()
         if progress and progress.get("stage") in {"titles", "slides"}:
             meta = progress.get("meta", {"title": "Resume", "abstract": ""})
@@ -1867,6 +2236,11 @@ Slide titles: {[s.title for s in outline.slides]}
         return outline, meta
 
     def run(self) -> Tuple[DeckOutline, Optional[Path], Optional[Path]]:
+        """Run.
+        
+        Returns:
+            Tuple[DeckOutline, Optional[Path], Optional[Path]]:
+        """
         self.sanity_checks()
         self.prepare_topic_sources()
         outline, _meta = self.build_outline_with_approval(max_rounds=3)

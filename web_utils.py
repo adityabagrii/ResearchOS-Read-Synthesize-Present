@@ -12,6 +12,11 @@ import requests
 
 class _DDGParser(HTMLParser):
     def __init__(self) -> None:
+        """Initialize.
+        
+        Returns:
+            None:
+        """
         super().__init__()
         self.results: List[Dict[str, str]] = []
         self._in_title = False
@@ -19,6 +24,15 @@ class _DDGParser(HTMLParser):
         self._current: Dict[str, str] = {}
 
     def handle_starttag(self, tag, attrs):
+        """Function handle starttag.
+        
+        Args:
+            tag (Any):
+            attrs (Any):
+        
+        Returns:
+            Any:
+        """
         attrs = dict(attrs)
         if tag == "a" and "class" in attrs and "result__a" in attrs.get("class", ""):
             self._in_title = True
@@ -27,6 +41,14 @@ class _DDGParser(HTMLParser):
             self._in_snippet = True
 
     def handle_endtag(self, tag):
+        """Function handle endtag.
+        
+        Args:
+            tag (Any):
+        
+        Returns:
+            Any:
+        """
         if tag == "a" and self._in_title:
             self._in_title = False
             if self._current.get("url") and self._current.get("title"):
@@ -35,6 +57,14 @@ class _DDGParser(HTMLParser):
             self._in_snippet = False
 
     def handle_data(self, data):
+        """Function handle data.
+        
+        Args:
+            data (Any):
+        
+        Returns:
+            Any:
+        """
         if self._in_title:
             self._current["title"] += data
         elif self._in_snippet and self.results:
@@ -42,6 +72,14 @@ class _DDGParser(HTMLParser):
 
 
 def _normalize_ddg_url(url: str) -> str:
+    """Function normalize ddg url.
+    
+    Args:
+        url (str):
+    
+    Returns:
+        str:
+    """
     if not url:
         return url
     parsed = urlparse(url)
@@ -53,6 +91,15 @@ def _normalize_ddg_url(url: str) -> str:
 
 
 def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    """Function search web.
+    
+    Args:
+        query (str):
+        max_results (int):
+    
+    Returns:
+        List[Dict[str, str]]:
+    """
     if not query.strip():
         return []
 

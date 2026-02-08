@@ -7,7 +7,15 @@ from typing import Optional
 
 
 def setup_logging(verbose: bool = False, log_path: Optional[Path] = None) -> None:
-    """Configure root logging for the app."""
+    """Function setup logging.
+    
+    Args:
+        verbose (bool):
+        log_path (Optional[Path]):
+    
+    Returns:
+        None:
+    """
     level = logging.DEBUG if verbose else logging.INFO
     # Prefer rich console logging if available for colored output
     try:

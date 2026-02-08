@@ -14,12 +14,26 @@ INPUT_RE = re.compile(r"\\(?:input|include)\{([^}]+)\}")
 
 
 def read_text(path: Path) -> str:
-    """Read file content with UTF-8 fallback."""
+    """Function read text.
+    
+    Args:
+        path (Path):
+    
+    Returns:
+        str:
+    """
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
 def find_main_tex_file(src_dir: Path) -> Path:
-    """Heuristically find the main TeX file in the arXiv source tree."""
+    """Find main tex file.
+    
+    Args:
+        src_dir (Path):
+    
+    Returns:
+        Path:
+    """
     candidates = []
     for p in src_dir.rglob("*.tex"):
         try:
@@ -43,7 +57,15 @@ def find_main_tex_file(src_dir: Path) -> Path:
 
 
 def resolve_tex_path(base: Path, ref: str) -> Optional[Path]:
-    """Resolve a \\input/\\include reference to a concrete file path."""
+    """Resolve tex path.
+    
+    Args:
+        base (Path):
+        ref (str):
+    
+    Returns:
+        Optional[Path]:
+    """
     ref = ref.strip()
     candidates = [base / ref, base / (ref + ".tex")]
     for c in candidates:
@@ -53,11 +75,27 @@ def resolve_tex_path(base: Path, ref: str) -> Optional[Path]:
 
 
 def flatten_tex(main_tex_path: Path, max_files: int = 120) -> str:
-    """Inline \\input/\\include files into a single TeX string."""
+    """Flatten tex.
+    
+    Args:
+        main_tex_path (Path):
+        max_files (int):
+    
+    Returns:
+        str:
+    """
     base = main_tex_path.parent
     seen = set()
 
     def _read(p: Path) -> str:
+        """Function read.
+        
+        Args:
+            p (Path):
+        
+        Returns:
+            str:
+        """
         if len(seen) >= max_files:
             return "\n% [flatten stopped: max_files reached]\n"
         rp = p.resolve()
@@ -69,6 +107,14 @@ def flatten_tex(main_tex_path: Path, max_files: int = 120) -> str:
         txt = re.sub(r"(?m)(?<!\\)%.*$", "", txt)
 
         def repl(m):
+            """Function repl.
+            
+            Args:
+                m (Any):
+            
+            Returns:
+                Any:
+            """
             ref = m.group(1)
             child = resolve_tex_path(base, ref)
             if not child:
@@ -81,7 +127,14 @@ def flatten_tex(main_tex_path: Path, max_files: int = 120) -> str:
 
 
 def strip_latex_commands(s: str) -> str:
-    """Remove LaTeX commands to produce a readable text stream."""
+    """Strip latex commands.
+    
+    Args:
+        s (str):
+    
+    Returns:
+        str:
+    """
     s = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{[^}]*\})?", " ", s)
     s = s.replace("\\", " ").replace("{", " ").replace("}", " ")
     s = re.sub(r"\s+", " ", s).strip()
@@ -89,7 +142,15 @@ def strip_latex_commands(s: str) -> str:
 
 
 def build_paper_text(flat_tex: str, max_chars: Optional[int] = None) -> str:
-    """Build a plain-text representation of the paper body."""
+    """Build paper text.
+    
+    Args:
+        flat_tex (str):
+        max_chars (Optional[int]):
+    
+    Returns:
+        str:
+    """
     if "\\begin{document}" in flat_tex and "\\end{document}" in flat_tex:
         flat_tex = flat_tex.split("\\begin{document}", 1)[1].rsplit("\\end{document}", 1)[0]
     txt = strip_latex_commands(flat_tex)
@@ -99,7 +160,14 @@ def build_paper_text(flat_tex: str, max_chars: Optional[int] = None) -> str:
 
 
 def _esc(s: str) -> str:
-    """Escape LaTeX special characters for safe rendering."""
+    """Function esc.
+    
+    Args:
+        s (str):
+    
+    Returns:
+        str:
+    """
     return (
         s.replace("\\", "\\textbackslash ")
         .replace("&", "\\&")
@@ -113,7 +181,14 @@ def _esc(s: str) -> str:
 
 
 def beamer_from_outline(outline: DeckOutline) -> str:
-    """Render a Beamer LaTeX deck from the outline."""
+    """Function beamer from outline.
+    
+    Args:
+        outline (DeckOutline):
+    
+    Returns:
+        str:
+    """
     slides_tex = []
     for sl in outline.slides:
         bullets = "\n".join([f"\\item {_esc(b)}" for b in sl.bullets])
@@ -226,7 +301,16 @@ def beamer_from_outline(outline: DeckOutline) -> str:
 
 
 def write_beamer(tex: str, out_dir: Path, filename_base: str = "presentation") -> Path:
-    """Write Beamer LaTeX to the output directory."""
+    """Write beamer.
+    
+    Args:
+        tex (str):
+        out_dir (Path):
+        filename_base (str):
+    
+    Returns:
+        Path:
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     tex_path = out_dir / f"{filename_base}.tex"
@@ -235,7 +319,15 @@ def write_beamer(tex: str, out_dir: Path, filename_base: str = "presentation") -
 
 
 def beamer_from_outline_with_figs(outline: DeckOutline, fig_plan: dict) -> str:
-    """Render a Beamer deck with separate figure slides."""
+    """Function beamer from outline with figs.
+    
+    Args:
+        outline (DeckOutline):
+        fig_plan (dict):
+    
+    Returns:
+        str:
+    """
     fig_map = {x["slide_index"]: x["figures"] for x in fig_plan.get("slides", [])}
 
     slides_tex = []

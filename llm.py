@@ -24,14 +24,33 @@ class LLMConfig:
 
 
 def init_llm(cfg: LLMConfig):
-    """Initialize the NVIDIA NIM chat model."""
+    """Initialize llm.
+    
+    Args:
+        cfg (LLMConfig):
+    
+    Returns:
+        Any:
+    """
     if ChatNVIDIA is None:
         raise RuntimeError(f"langchain_nvidia_ai_endpoints not available: {_IMPORT_ERR}")
     return ChatNVIDIA(model=cfg.model, api_key=cfg.api_key)
 
 
 def safe_invoke(logger, llm, prompt: str, retries: int = 6, sleep_base: float = 0.8, debug: bool = False) -> str:
-    """Invoke LLM with retries for flaky or empty responses."""
+    """Function safe invoke.
+    
+    Args:
+        logger (Any):
+        llm (Any):
+        prompt (str):
+        retries (int):
+        sleep_base (float):
+        debug (bool):
+    
+    Returns:
+        str:
+    """
     last = ""
     for k in range(retries):
         out = llm.invoke(prompt).content or ""

@@ -29,17 +29,35 @@ VERSION = "0.6.4"
 
 
 def _requirements_path() -> Path | None:
+    """Function requirements path.
+    
+    Returns:
+        Path | None:
+    """
     req = Path(__file__).parent / "requirements.txt"
     return req if req.exists() else None
 
 
 def _requirements_hash(req_path: Path) -> str:
+    """Function requirements hash.
+    
+    Args:
+        req_path (Path):
+    
+    Returns:
+        str:
+    """
     h = hashlib.sha256()
     h.update(req_path.read_bytes())
     return h.hexdigest()
 
 
 def ensure_requirements_installed() -> None:
+    """Ensure requirements installed.
+    
+    Returns:
+        None:
+    """
     req_path = _requirements_path()
     if not req_path:
         logger.debug("requirements.txt not found; skipping auto-install.")
@@ -62,6 +80,11 @@ def ensure_requirements_installed() -> None:
 
 
 def print_helper() -> None:
+    """Print helper.
+    
+    Returns:
+        None:
+    """
     print("Paper2ppt help")
     print("")
     print("Quick start:")
@@ -98,6 +121,11 @@ def print_helper() -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse args.
+    
+    Returns:
+        argparse.Namespace:
+    """
     p = argparse.ArgumentParser(description="Generate a Beamer slide deck from arXiv papers or local PDFs.")
     p.add_argument("--version", action="version", version=f"paper2ppt {VERSION}")
     p.add_argument(
@@ -172,6 +200,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def _slugify(s: str, max_len: int = 80) -> str:
+    """Slugify.
+    
+    Args:
+        s (str):
+        max_len (int):
+    
+    Returns:
+        str:
+    """
     s = (s or "").strip()
     s = re.sub(r"[^a-zA-Z0-9]+", "_", s)
     s = s.strip("_")
@@ -179,6 +216,14 @@ def _slugify(s: str, max_len: int = 80) -> str:
 
 
 def _query_summary(query: str) -> str:
+    """Function query summary.
+    
+    Args:
+        query (str):
+    
+    Returns:
+        str:
+    """
     words = re.findall(r"[A-Za-z0-9]+", query or "")
     if not words:
         return "Query"
@@ -186,6 +231,14 @@ def _query_summary(query: str) -> str:
 
 
 def _split_list_args(values: list[str]) -> list[str]:
+    """Split list args.
+    
+    Args:
+        values (list[str]):
+    
+    Returns:
+        list[str]:
+    """
     out: list[str] = []
     for v in values:
         if not v:
@@ -199,6 +252,15 @@ def _split_list_args(values: list[str]) -> list[str]:
 
 
 def _collect_pdfs(paths: list[str], dirs: list[str]) -> list[Path]:
+    """Collect pdfs.
+    
+    Args:
+        paths (list[str]):
+        dirs (list[str]):
+    
+    Returns:
+        list[Path]:
+    """
     pdfs: list[Path] = []
     for p in _split_list_args(paths):
         pdfs.append(Path(p).expanduser().resolve())
@@ -210,6 +272,15 @@ def _collect_pdfs(paths: list[str], dirs: list[str]) -> list[Path]:
 
 
 def _download_pdfs(urls: list[str], out_dir: Path) -> list[Path]:
+    """Download pdfs.
+    
+    Args:
+        urls (list[str]):
+        out_dir (Path):
+    
+    Returns:
+        list[Path]:
+    """
     import requests
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -236,6 +307,11 @@ def _download_pdfs(urls: list[str], out_dir: Path) -> list[Path]:
     return downloaded
 
 def main() -> int:
+    """Function main.
+    
+    Returns:
+        int:
+    """
     if len(sys.argv) > 1 and sys.argv[1] == "help":
         print_helper()
         return 0

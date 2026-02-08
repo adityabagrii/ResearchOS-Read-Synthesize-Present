@@ -15,7 +15,14 @@ ARXIV_EPRINT_URL = "https://arxiv.org/e-print/{arxiv_id}"
 
 
 def extract_arxiv_id(arxiv_link_or_id: str) -> str:
-    """Normalize arXiv link or ID into a plain arXiv identifier."""
+    """Extract arxiv id.
+    
+    Args:
+        arxiv_link_or_id (str):
+    
+    Returns:
+        str:
+    """
     s = arxiv_link_or_id.strip()
     m = re.search(r"arxiv\.org/(abs|pdf)/([^/?#]+)", s)
     if m:
@@ -25,7 +32,14 @@ def extract_arxiv_id(arxiv_link_or_id: str) -> str:
 
 
 def get_arxiv_metadata(arxiv_id: str) -> Dict[str, Any]:
-    """Fetch arXiv metadata (title, authors, abstract, url, published)."""
+    """Get arxiv metadata.
+    
+    Args:
+        arxiv_id (str):
+    
+    Returns:
+        Dict[str, Any]:
+    """
     r = next(arxiv.Search(id_list=[arxiv_id]).results(), None)
     if r is None:
         raise RuntimeError("arXiv metadata not found. Check the ID/link.")
@@ -39,7 +53,15 @@ def get_arxiv_metadata(arxiv_id: str) -> Dict[str, Any]:
 
 
 def download_and_extract_arxiv_source(arxiv_id: str, out_dir: Path) -> Path:
-    """Download arXiv source tarball and extract into work directory."""
+    """Download and extract arxiv source.
+    
+    Args:
+        arxiv_id (str):
+        out_dir (Path):
+    
+    Returns:
+        Path:
+    """
     out_dir = Path(out_dir)
     src_dir = out_dir / "arxiv_source"
     if src_dir.exists():
@@ -47,6 +69,14 @@ def download_and_extract_arxiv_source(arxiv_id: str, out_dir: Path) -> Path:
     src_dir.mkdir(parents=True, exist_ok=True)
 
     def _try(url: str) -> bytes:
+        """Function try.
+        
+        Args:
+            url (str):
+        
+        Returns:
+            bytes:
+        """
         r = requests.get(url, timeout=60)
         r.raise_for_status()
         return r.content

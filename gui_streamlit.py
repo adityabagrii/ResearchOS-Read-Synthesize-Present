@@ -25,10 +25,23 @@ CONFIG_PATH = Path.home() / ".paper2ppt_gui.json"
 
 class _LogBufferHandler(logging.Handler):
     def __init__(self) -> None:
+        """Initialize.
+        
+        Returns:
+            None:
+        """
         super().__init__()
         self.lines: list[str] = []
 
     def emit(self, record: logging.LogRecord) -> None:
+        """Function emit.
+        
+        Args:
+            record (logging.LogRecord):
+        
+        Returns:
+            None:
+        """
         msg = self.format(record)
         self.lines.append(msg)
         if len(self.lines) > 1000:
@@ -36,6 +49,14 @@ class _LogBufferHandler(logging.Handler):
 
 
 def _split_list_args(values: list[str]) -> list[str]:
+    """Split list args.
+    
+    Args:
+        values (list[str]):
+    
+    Returns:
+        list[str]:
+    """
     out: list[str] = []
     for v in values:
         if not v:
@@ -49,6 +70,15 @@ def _split_list_args(values: list[str]) -> list[str]:
 
 
 def _slugify(s: str, max_len: int = 80) -> str:
+    """Slugify.
+    
+    Args:
+        s (str):
+        max_len (int):
+    
+    Returns:
+        str:
+    """
     import re
 
     s = (s or "").strip()
@@ -58,6 +88,14 @@ def _slugify(s: str, max_len: int = 80) -> str:
 
 
 def _query_summary(query: str) -> str:
+    """Function query summary.
+    
+    Args:
+        query (str):
+    
+    Returns:
+        str:
+    """
     import re
 
     words = re.findall(r"[A-Za-z0-9]+", query or "")
@@ -67,6 +105,15 @@ def _query_summary(query: str) -> str:
 
 
 def _collect_pdfs(paths: list[str], dirs: list[str]) -> list[Path]:
+    """Collect pdfs.
+    
+    Args:
+        paths (list[str]):
+        dirs (list[str]):
+    
+    Returns:
+        list[Path]:
+    """
     pdfs: list[Path] = []
     for p in _split_list_args(paths):
         pdfs.append(Path(p).expanduser().resolve())
@@ -78,6 +125,15 @@ def _collect_pdfs(paths: list[str], dirs: list[str]) -> list[Path]:
 
 
 def _download_pdfs(urls: list[str], out_dir: Path) -> list[Path]:
+    """Download pdfs.
+    
+    Args:
+        urls (list[str]):
+        out_dir (Path):
+    
+    Returns:
+        list[Path]:
+    """
     import requests
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +160,15 @@ def _download_pdfs(urls: list[str], out_dir: Path) -> list[Path]:
 
 
 def _save_uploads(files, out_dir: Path) -> list[Path]:
+    """Save uploads.
+    
+    Args:
+        files (Any):
+        out_dir (Path):
+    
+    Returns:
+        list[Path]:
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for f in files:
@@ -118,6 +183,18 @@ def _save_uploads(files, out_dir: Path) -> list[Path]:
 
 
 def _resolve_sources(arxiv_text: str, pdf_text: str, pdf_dir_text: str, pdf_url_text: str, uploads: list[Path]) -> tuple[list[str], list[Path]]:
+    """Resolve sources.
+    
+    Args:
+        arxiv_text (str):
+        pdf_text (str):
+        pdf_dir_text (str):
+        pdf_url_text (str):
+        uploads (list[Path]):
+    
+    Returns:
+        tuple[list[str], list[Path]]:
+    """
     arxiv_inputs = _split_list_args([arxiv_text]) if arxiv_text else []
     arxiv_ids = sorted({extract_arxiv_id(a) for a in arxiv_inputs if a})
 
@@ -140,6 +217,11 @@ def _resolve_sources(arxiv_text: str, pdf_text: str, pdf_dir_text: str, pdf_url_
 
 
 def _load_gui_config() -> dict:
+    """Load gui config.
+    
+    Returns:
+        dict:
+    """
     if CONFIG_PATH.exists():
         try:
             return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -149,10 +231,28 @@ def _load_gui_config() -> dict:
 
 
 def _save_gui_config(data: dict) -> None:
+    """Save gui config.
+    
+    Args:
+        data (dict):
+    
+    Returns:
+        None:
+    """
     CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _derive_run_name(arxiv_ids: list[str], pdf_paths: list[Path], query: str) -> str:
+    """Function derive run name.
+    
+    Args:
+        arxiv_ids (list[str]):
+        pdf_paths (list[Path]):
+        query (str):
+    
+    Returns:
+        str:
+    """
     title = ""
     if arxiv_ids:
         try:
@@ -175,6 +275,11 @@ def _derive_run_name(arxiv_ids: list[str], pdf_paths: list[Path], query: str) ->
 
 
 def main() -> None:
+    """Function main.
+    
+    Returns:
+        None:
+    """
     st.set_page_config(page_title=APP_TITLE, layout="wide")
     st.title(APP_TITLE)
     st.caption("Create Beamer presentations from arXiv papers and local PDFs.")
@@ -296,6 +401,11 @@ def main() -> None:
         result: dict = {}
 
         def _run_pipeline() -> None:
+            """Run pipeline.
+            
+            Returns:
+                None:
+            """
             try:
                 cached = st.session_state.get("_llm_cache")
                 if cached and cached.get("model") == cfg.llm_model and cached.get("key") == cfg.llm_api_key:

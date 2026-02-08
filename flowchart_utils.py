@@ -9,6 +9,15 @@ from typing import List
 
 
 def _sanitize_label(s: str, max_chars: int = 60) -> str:
+    """Sanitize label.
+    
+    Args:
+        s (str):
+        max_chars (int):
+    
+    Returns:
+        str:
+    """
     s = re.sub(r"[\[\]{}()<>]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     if len(s) > max_chars:
@@ -17,6 +26,15 @@ def _sanitize_label(s: str, max_chars: int = 60) -> str:
 
 
 def build_graphviz(steps: List[str], structure: str = "linear") -> str:
+    """Build graphviz.
+    
+    Args:
+        steps (List[str]):
+        structure (str):
+    
+    Returns:
+        str:
+    """
     lines = [
         "digraph Flowchart {",
         "  rankdir=LR;",
@@ -56,6 +74,17 @@ def build_graphviz_from_nodes_edges(
     title: str = "",
     rankdir: str = "LR",
 ) -> str:
+    """Build graphviz from nodes edges.
+    
+    Args:
+        nodes (List[str]):
+        edges (List[tuple[str, str, str]]):
+        title (str):
+        rankdir (str):
+    
+    Returns:
+        str:
+    """
     lines = [
         "digraph Diagram {",
         f"  rankdir={rankdir};",
@@ -84,6 +113,15 @@ def build_graphviz_from_nodes_edges(
 
 
 def render_graphviz(dot_path: Path, out_path: Path) -> None:
+    """Render graphviz.
+    
+    Args:
+        dot_path (Path):
+        out_path (Path):
+    
+    Returns:
+        None:
+    """
     if shutil.which("dot"):
         subprocess.run(["dot", "-Tpng", str(dot_path), "-o", str(out_path)], check=True)
         return

@@ -9,6 +9,14 @@ import fitz  # PyMuPDF
 
 
 def _clean_text(s: str) -> str:
+    """Function clean text.
+    
+    Args:
+        s (str):
+    
+    Returns:
+        str:
+    """
     s = (s or "").replace("\x00", " ")
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r"\n{3,}", "\n\n", s)
@@ -16,10 +24,15 @@ def _clean_text(s: str) -> str:
 
 
 def extract_pdf_content(pdf_path: Path, out_dir: Path, max_pages: int | None = None) -> Dict[str, Any]:
-    """Extract text and images from a PDF.
-
+    """Extract pdf content.
+    
+    Args:
+        pdf_path (Path):
+        out_dir (Path):
+        max_pages (int | None):
+    
     Returns:
-        dict with keys: title, text, images (list of dicts with page, path)
+        Dict[str, Any]:
     """
     pdf_path = Path(pdf_path).expanduser().resolve()
     if not pdf_path.exists():
