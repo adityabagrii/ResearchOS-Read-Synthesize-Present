@@ -1375,7 +1375,7 @@ Topic: {self.cfg.topic}
                             filtered.append(r)
                     results = filtered
 
-        # Debug output for topic search
+        # Debug output for topic search (after any LLM-query retry)
         out_dir = self.cfg.out_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         results_path = out_dir / "topic_web_results.txt"
@@ -1410,7 +1410,6 @@ Topic: {self.cfg.topic}
                     print(f"{i}. {title}\n   {url}\n   {snippet}\n")
                 print("----------------------------------------\n")
         else:
-            results_path.write_text("No results.\n", encoding="utf-8")
             logger.warning("No web results found for topic search.")
             # Fallback: query arXiv directly for scholarly-only topic mode
             if self.cfg.topic_scholarly_only:
@@ -1423,9 +1422,14 @@ Topic: {self.cfg.topic}
                     if arxiv_ids:
                         logger.info("arXiv fallback results: %s", len(arxiv_ids))
                         self.cfg.arxiv_ids = list(dict.fromkeys(self.cfg.arxiv_ids + arxiv_ids))
+                        results_path.write_text(
+                            "arXiv fallback results:\n" + "\n".join(arxiv_ids) + "\n",
+                            encoding="utf-8",
+                        )
                         return
                 except Exception:
                     logger.exception("arXiv fallback search failed.")
+            results_path.write_text("No results.\n", encoding="utf-8")
             hint = "Try rephrasing the topic."
             if self.cfg.topic_scholarly_only:
                 hint += " Or disable --topic-scholarly-only."
