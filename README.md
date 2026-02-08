@@ -1,13 +1,11 @@
-# ResearchOS - An Agentic Workflow for Presentation Generation
+# ResearchOS - Read. Synthesize. Present
 
 # Author
 Aditya Bagri  
 Email: adityabagrii.work@gmail.com  
 Academic: aditya22029@iiitd.ac.in
 -----
-Agentic CLI that turns arXiv papers, local PDFs and/or PDF URLs into Beamer slide decks using LLMs. It supports query-guided presentations, optional web search with citations, figure insertion (arXiv only), speaker notes, and multi-source synthesis.
-
-It also support Topic-based, where you give a topic as an input, based on web search results for the same, LLM prepares a slide deck on that topic.
+ResearchOS is an agentic CLI and GUI that turns arXiv papers, local PDFs, PDF URLs, or topic-only prompts into polished Beamer slide decks and structured research notes using LLMs. It supports single or multi‑source synthesis, query‑guided presentations, optional web search with citations, speaker notes, arXiv figure insertion, and Graphviz flowchart/diagram generation with intent‑aware styles. ResearchOS includes robust slide generation with retries, interactive checkpoints, resume support, and organized run directories. Beyond slides, it offers dedicated modes for reading notes, viva prep, experiment descriptions, exam prep, implementation notes, reproduction checklists, teaching‑mode pacing with pause questions, and chat‑style RAG over papers. It also provides persistent paper memory with local indexing/search and a daily research brief, plus topic‑only research that expands a user topic into a query, gathers credible sources, summarizes them, and builds a complete deck from fundamentals to results and future work.
 
 ## Highlights
 - arXiv, local PDF, and PDF URL inputs (single or multiple)
