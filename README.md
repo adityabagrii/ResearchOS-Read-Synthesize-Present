@@ -188,6 +188,7 @@ Paper2ppt now includes several “chat-style” modes that generate structured m
 - Teaching Mode (slides): intuition-heavy slides + pause questions. See [docs/teaching_mode.md](docs/teaching_mode.md)
 - Persistent Paper Memory: local index + search. See [docs/paper_memory.md](docs/paper_memory.md)
 - Daily Research Brief: journal-style summary of runs. See [docs/daily_brief.md](docs/daily_brief.md)
+- Chat Mode (RAG): interactive Q&A with semantic retrieval over the paper. See [docs/chat_mode.md](docs/chat_mode.md)
 
 **Quick examples**
 ```bash
@@ -199,6 +200,9 @@ paper2ppt -a 2401.12345 --read --generate-flowcharts
 
 # Reading notes + intent-aware DAG diagrams (must include --generate-flowcharts to embed images)
 paper2ppt -a 2401.12345 --read --generate-flowcharts --diagram-intent-aware --diagram-style dag
+
+# Chat mode (RAG over the paper)
+paper2ppt -a 2401.12345 --chat
 
 # Viva prep (no slides)
 paper2ppt -a 2401.12345 --viva-mode
@@ -493,6 +497,7 @@ Notes on structure:
 - `--index-paper` index a paper into local memory
 - `--search` search the local paper index
 - `--daily-brief` generate a daily research brief
+- `--chat` chat with the paper using stored context (RAG)
 - `--version` show version and exit
 
 ## Use Cases
@@ -580,6 +585,7 @@ Paper2ppt/
     teaching_mode.md
     paper_memory.md
     daily_brief.md
+    chat_mode.md
   requirements.txt
   pyproject.toml
   README.md

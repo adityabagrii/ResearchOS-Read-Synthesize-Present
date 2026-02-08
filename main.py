@@ -589,7 +589,15 @@ def main() -> int:
         logger.info("Saved TeX: %s", tex_path)
         logger.info("Saved PDF: %s", pdf_path)
 
-        slide_titles = [s.title for s in outline.slides][:6]
+        slide_titles = []
+        for s in outline.slides:
+            if hasattr(s, "title"):
+                slide_titles.append(s.title)
+            elif isinstance(s, dict):
+                slide_titles.append(s.get("title", "Slide"))
+            else:
+                slide_titles.append("Slide")
+        slide_titles = slide_titles[:6]
         summary_excerpt = "Slides: " + "; ".join(slide_titles)
         outputs = []
         if tex_path:

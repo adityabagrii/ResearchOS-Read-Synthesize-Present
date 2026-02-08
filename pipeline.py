@@ -3419,7 +3419,7 @@ Slide titles: {[s.title for s in outline.slides]}
         # Persist context for chat/RAG reuse
         try:
             ctx_path = self.cfg.out_dir / "paper_context.json"
-            chunks = self.chunk_text(paper_text, 1200)
+            chunks = self.outline_builder.chunk_text(paper_text, 1200)
             embeddings = []
             embed_model = ""
             try:
@@ -3480,6 +3480,15 @@ Slide titles: {[s.title for s in outline.slides]}
         word_count = len(re.findall(r"[A-Za-z0-9]+", text))
         return word_count < 500
 
+    @staticmethod
+    def _reading_missing_sections(text: str) -> List[str]:
+        required = ["Problem", "Key Idea", "Method", "Results", "Limitations", "What I Learned"]
+        missing = []
+        for h in required:
+            if f"## {h}" not in text:
+                missing.append(h)
+        return missing
+
     def _write_markdown(self, name: str, content: str) -> Path:
         path = self.cfg.out_dir / name
         path.write_text(content.strip() + "\n", encoding="utf-8")
@@ -3534,18 +3543,23 @@ Summary: {ctx.merged_summary[:6000]}
 Sources:
 {ctx.sources_block}
 """.strip()
-        raw = safe_invoke(logger, self.llm, prompt, retries=6)
-        cleaned = self._strip_code_fences(raw)
-        if self._reading_notes_too_short(cleaned):
-            refine = safe_invoke(
-                logger,
-                self.llm,
-                "Expand the reading notes in depth to at least 500 words total. "
-                "Keep the same headings and do NOT use code fences.\n\n"
-                + cleaned[:5000],
-                retries=6,
+        cleaned = ""
+        last = ""
+        for attempt in range(3):
+            raw = safe_invoke(logger, self.llm, prompt if attempt == 0 else last, retries=6)
+            cleaned = self._strip_code_fences(raw)
+            missing = self._reading_missing_sections(cleaned)
+            if not missing and not self._reading_notes_too_short(cleaned):
+                break
+            last = (
+                "Rewrite the reading notes in depth (>= 500 words). "
+                "Use ALL required headings and do NOT use code fences. "
+                f"Missing headings: {', '.join(missing) if missing else 'none'}.\n\n"
+                f"Title: {ctx.meta.get('title','')}\n"
+                f"Abstract: {ctx.meta.get('abstract','')}\n"
+                f"Summary: {ctx.merged_summary[:6000]}\n"
+                f"Sources:\n{ctx.sources_block}\n"
             )
-            cleaned = self._strip_code_fences(refine) or cleaned
         notes_path = self._write_markdown("reading_notes.md", cleaned)
         if self.cfg.generate_flowcharts:
             try:
@@ -3881,7 +3895,38 @@ Entries:
     def run_non_slide(self) -> List[Path]:
         self.sanity_checks()
         self.prepare_topic_sources()
-        ctx = self.build_paper_context()
+        ctx = None
+        if self.cfg.resume_path and self.cfg.read_mode:
+            progress = self._load_progress()
+            if progress:
+                meta = progress.get("meta", {})
+                paper_text = progress.get("paper_text", "")
+                merged_summary = progress.get("merged_summary", "")
+                sources_block = progress.get("sources_block", "")
+                source_label = progress.get("source_label", "")
+                web_context = progress.get("web_context", "")
+                citations = progress.get("citations", [])
+                if paper_text and not merged_summary:
+                    merged_summary = self.outline_builder.summarize_text(
+                        paper_text,
+                        meta,
+                        global_feedback="",
+                        web_context=web_context,
+                        sources_block=sources_block,
+                    )
+                if paper_text:
+                    ctx = PaperContext(
+                        meta=meta,
+                        paper_text=paper_text,
+                        merged_summary=merged_summary,
+                        sources_block=sources_block,
+                        source_label=source_label,
+                        web_context=web_context,
+                        citations=citations,
+                        sources=[],
+                    )
+        if ctx is None:
+            ctx = self.build_paper_context()
 
         outputs: List[Path] = []
         if self.cfg.read_mode:
@@ -3925,7 +3970,7 @@ Entries:
             meta = ctx.meta
             summary = ctx.merged_summary
             sources_block = ctx.sources_block
-            chunks = self.chunk_text(ctx.paper_text, 1200)
+            chunks = self.outline_builder.chunk_text(ctx.paper_text, 1200)
             embeddings = []
 
         if not chunks:
