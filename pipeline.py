@@ -1879,7 +1879,7 @@ class FigurePlanner:
             str:
         """
         s = re.sub(r"(?m)(?<!\\\\)%.*$", "", s)
-        s = re.sub(r"\\\\[a-zA-Z]+\\*?(?:\\[[^\\]]*\\])?(?:\\{[^}]*\\})?", " ", s)
+        s = re.sub(r"\\[a-zA-Z]+\\*?(?:\\[[^]]*\\])?(?:\\{[^}]*\\})?", " ", s)
         s = s.replace("{", " ").replace("}", " ").replace("\\\\", " ")
         s = re.sub(r"\\s+", " ", s).strip()
         return s
@@ -1960,7 +1960,12 @@ class FigurePlanner:
 
         figs = fig_assets[:max_figs]
         catalog = "\n".join([f"- {Path(f.resolved_path).name}: {f.caption[:120]}" for f in figs])
-        slide_titles = "\n".join([f"{i+1}. {s.title}" for i, s in enumerate(outline.slides)])
+        slide_titles = "\n".join(
+            [
+                f"{i+1}. {getattr(s, 'title', None) or (s.get('title') if isinstance(s, dict) else 'Slide')}"
+                for i, s in enumerate(outline.slides)
+            ]
+        )
 
         prompt = f"""
 Return ONLY JSON.

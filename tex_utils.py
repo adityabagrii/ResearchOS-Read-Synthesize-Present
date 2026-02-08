@@ -180,6 +180,47 @@ def _esc(s: str) -> str:
     )
 
 
+def _image_frames(sl: DeckOutline, title: str = "") -> list[str]:
+    frames: list[str] = []
+    captions = list(getattr(sl, "image_captions", []) or [])
+    cap_idx = 0
+
+    def _frame(img_path: str, caption: str, prefix: str) -> str:
+        if caption:
+            frame_title = f"{prefix}: {caption}"
+        elif title:
+            frame_title = f"{prefix}: {title}"
+        else:
+            frame_title = f"{prefix}"
+        cap_line = f"\\vspace{{0.2em}}\n{{\\footnotesize\\textit{{{prefix}:}} {_esc(caption)}}}" if caption else ""
+        return f"""
+\\begin{{frame}}[t]{{{_esc(frame_title)}}}
+\\begin{{center}}
+\\includegraphics[width=0.9\\linewidth,height=0.8\\textheight,keepaspectratio]{{{_esc(img_path)}}}
+\\end{{center}}
+{cap_line}
+\\end{{frame}}
+""".strip()
+
+    flow_caption = ""
+    if getattr(sl, "flowchart", None) and getattr(sl.flowchart, "caption", ""):
+        flow_caption = getattr(sl.flowchart, "caption", "")
+
+    if getattr(sl, "flowchart_images", None):
+        for p in sl.flowchart_images:
+            frames.append(_frame(p, flow_caption, "Diagram"))
+
+    if getattr(sl, "generated_images", None):
+        for p in sl.generated_images:
+            cap = ""
+            if cap_idx < len(captions):
+                cap = captions[cap_idx]
+                cap_idx += 1
+            frames.append(_frame(p, cap, "Figure"))
+
+    return frames
+
+
 def beamer_from_outline(outline: DeckOutline) -> str:
     """Function beamer from outline.
     
@@ -196,31 +237,6 @@ def beamer_from_outline(outline: DeckOutline) -> str:
         figs = ""
         if sl.figure_suggestions:
             figs = "\\vspace{0.4em}\n{\\footnotesize\\textit{Figure ideas:} " + _esc("; ".join(sl.figure_suggestions)) + "}"
-
-        gen_imgs = ""
-        img_lines = []
-        if getattr(sl, "flowchart_images", None):
-            for p in sl.flowchart_images:
-                img_lines.append(f"\\includegraphics[width=0.9\\linewidth]{{{_esc(p)}}}")
-        if getattr(sl, "generated_images", None):
-            for p in sl.generated_images:
-                img_lines.append(f"\\includegraphics[width=0.9\\linewidth]{{{_esc(p)}}}")
-        if img_lines:
-            gen_imgs = "\\vspace{0.6em}\n" + "\\\\\n".join(img_lines)
-            # Per-image captions if provided
-            if getattr(sl, "image_captions", None):
-                for cap in sl.image_captions:
-                    if cap.strip():
-                        gen_imgs += (
-                            "\n\\vspace{0.3em}\n"
-                            f"{{\\footnotesize\\textit{{Figure:}} {_esc(cap)}}}"
-                        )
-            # Flowchart caption
-            if getattr(sl, "flowchart", None) and getattr(sl.flowchart, "caption", ""):
-                gen_imgs += (
-                    "\n\\vspace{0.4em}\n"
-                    f"{{\\footnotesize\\textit{{Diagram:}} {_esc(sl.flowchart.caption)}}}"
-                )
 
         tables_tex = ""
         if getattr(sl, "tables", None):
@@ -262,12 +278,12 @@ def beamer_from_outline(outline: DeckOutline) -> str:
 {bullets}
 \\end{{itemize}}
 {figs}
-{gen_imgs}
 {tables_tex}
 {notes}
 \\end{{frame}}
 """.strip()
         )
+        slides_tex.extend(_image_frames(sl, title=sl.title))
 
     refs = ""
     if outline.citations:
@@ -360,40 +376,17 @@ def beamer_from_outline_with_figs(outline: DeckOutline, fig_plan: dict) -> str:
     slides_tex = []
     for idx, sl in enumerate(outline.slides, 1):
         bullets = "\n".join([f"\\item {_esc(b)}" for b in sl.bullets])
-        gen_imgs = ""
-        img_lines = []
-        if getattr(sl, "flowchart_images", None):
-            for p in sl.flowchart_images:
-                img_lines.append(f"\\includegraphics[width=0.9\\linewidth]{{{_esc(p)}}}")
-        if getattr(sl, "generated_images", None):
-            for p in sl.generated_images:
-                img_lines.append(f"\\includegraphics[width=0.9\\linewidth]{{{_esc(p)}}}")
-        if img_lines:
-            gen_imgs = "\\vspace{0.6em}\n" + "\\\\\n".join(img_lines)
-            if getattr(sl, "image_captions", None):
-                for cap in sl.image_captions:
-                    if cap.strip():
-                        gen_imgs += (
-                            "\n\\vspace{0.3em}\n"
-                            f"{{\\footnotesize\\textit{{Figure:}} {_esc(cap)}}}"
-                        )
-            if getattr(sl, "flowchart", None) and getattr(sl.flowchart, "caption", ""):
-                gen_imgs += (
-                    "\n\\vspace{0.4em}\n"
-                    f"{{\\footnotesize\\textit{{Diagram:}} {_esc(sl.flowchart.caption)}}}"
-                )
-
         slides_tex.append(
             f"""
 \\begin{{frame}}[t,allowframebreaks]{{{_esc(sl.title)}}}
 \\begin{{itemize}}
 {bullets}
 \\end{{itemize}}
-{gen_imgs}
 {("\\vspace{0.3em}\n{\\footnotesize\\textit{Notes:} " + _esc(sl.speaker_notes) + "}") if sl.speaker_notes.strip() else ""}
 \\end{{frame}}
 """.strip()
         )
+        slides_tex.extend(_image_frames(sl, title=sl.title))
         figs = fig_map.get(idx, [])
         if figs:
             f0 = figs[0]["file"]
