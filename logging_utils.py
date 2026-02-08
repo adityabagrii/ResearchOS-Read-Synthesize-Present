@@ -32,7 +32,7 @@ def setup_logging(verbose: bool = False, log_path: Optional[Path] = None) -> Non
         try:
             handlers.append(logging.FileHandler(log_path, mode="w", encoding="utf-8"))
         except OSError as exc:
-            fallback = Path(tempfile.gettempdir()) / "paper2ppt.run.log"
+            fallback = Path(tempfile.gettempdir()) / "researchos.run.log"
             try:
                 handlers.append(logging.FileHandler(fallback, mode="w", encoding="utf-8"))
                 print(

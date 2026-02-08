@@ -1,4 +1,4 @@
-# Paper2PPT - An Agentic Workflow for Presentation Generation
+# ResearchOS - An Agentic Workflow for Presentation Generation
 
 # Author
 Aditya Bagri  
@@ -33,7 +33,7 @@ It also support Topic-based, where you give a topic as an input, based on web se
 ## Installation
 From the repository root:
 ```bash
-cd Paper2ppt
+cd ResearchOS
 pip install -e .
 ```
 
@@ -44,12 +44,12 @@ pip install -r requirements.txt
 
 Verify:
 ```bash
-paper2ppt --version
+researchos --version
 ```
 
 Help:
 ```bash
-paper2ppt help
+researchos help
 ```
 
 ## Get an NVIDIA API Key
@@ -116,7 +116,7 @@ brew install graphviz
 ## Quick Start
 Basic arXiv run:
 ```bash
-paper2ppt \
+researchos \
   -a 2602.05883 \
   --slides 10 \
   --bullets 4
@@ -124,7 +124,7 @@ paper2ppt \
 
 Local PDF run:
 ```bash
-paper2ppt \
+researchos \
   -p "/path/to/paper.pdf" \
   --slides 10 \
   --bullets 4
@@ -132,7 +132,7 @@ paper2ppt \
 
 PDF URL run:
 ```bash
-paper2ppt \
+researchos \
   -u "https://example.com/paper.pdf" \
   --slides 10 \
   --bullets 4
@@ -141,7 +141,7 @@ If a PDF URL fails to download, the CLI will prompt you to either skip that URL 
 
 Query-guided run (web search enabled by default):
 ```bash
-paper2ppt \
+researchos \
   -a 1811.12432 \
   --query "Compare this approach to prior work" \
   --slides 10 \
@@ -150,7 +150,7 @@ paper2ppt \
 
 Multiple arXiv IDs:
 ```bash
-paper2ppt \
+researchos \
   -a "1811.12432,1707.06347" \
   --query "Compare approaches the different approaches used in these papers" \
   --slides 12 \
@@ -159,7 +159,7 @@ paper2ppt \
 
 Multiple PDFs from a directory:
 ```bash
-paper2ppt \
+researchos \
   -d "/path/to/pdfs" \
   --query "Compare methods across papers" \
   --slides 12 \
@@ -168,7 +168,7 @@ paper2ppt \
 
 Mixed sources (arXiv + PDFs):
 ```bash
-paper2ppt \
+researchos \
   -a 1811.12432 \
   -p "/path/to/paper.pdf" \
   --query "Compare approaches" \
@@ -177,7 +177,7 @@ paper2ppt \
 ```
 
 ## New Modes (Non-Slide + Teaching + Memory)
-Paper2ppt now includes several “chat-style” modes that generate structured markdown instead of slides, plus a teaching mode for slide pacing and a persistent paper memory.
+ResearchOS now includes several “chat-style” modes that generate structured markdown instead of slides, plus a teaching mode for slide pacing and a persistent paper memory.
 
 **Mode guides (with tutorials)**
 - Reading Mode: 1–2 page structured reading notes. See [docs/reading_mode.md](docs/reading_mode.md)
@@ -194,50 +194,50 @@ Paper2ppt now includes several “chat-style” modes that generate structured m
 **Quick examples**
 ```bash
 # Reading notes (no slides)
-paper2ppt -a 2401.12345 --read
+researchos -a 2401.12345 --read
 
 # Reading notes + embedded diagrams
-paper2ppt -a 2401.12345 --read --generate-flowcharts
+researchos -a 2401.12345 --read --generate-flowcharts
 
 # Reading notes + intent-aware DAG diagrams (must include --generate-flowcharts to embed images)
-paper2ppt -a 2401.12345 --read --generate-flowcharts --diagram-intent-aware --diagram-style dag
+researchos -a 2401.12345 --read --generate-flowcharts --diagram-intent-aware --diagram-style dag
 
 # Chat mode (RAG over the paper)
-paper2ppt -a 2401.12345 --chat
+researchos -a 2401.12345 --chat
 
 # Resume read mode from a prior run (reuse extracted text + summary)
-paper2ppt --read --resume /path/to/run
+researchos --read --resume /path/to/run
 
 # Viva prep (no slides)
-paper2ppt -a 2401.12345 --viva-mode
+researchos -a 2401.12345 --viva-mode
 
 # Experiment description (no slides)
-paper2ppt -a 2401.12345 --describe-experiments
+researchos -a 2401.12345 --describe-experiments
 
 # Exam prep (no slides)
-paper2ppt -a 2401.12345 --exam-prep
+researchos -a 2401.12345 --exam-prep
 
 # Implementation notes (no slides)
-paper2ppt -a 2401.12345 --implementation-notes
+researchos -a 2401.12345 --implementation-notes
 
 # Reproduction checklist (no slides)
-paper2ppt -a 2401.12345 --repro-checklist
+researchos -a 2401.12345 --repro-checklist
 
 # Teaching mode (slides)
-paper2ppt -a 2401.12345 --teaching-mode -s 12 -b 4
+researchos -a 2401.12345 --teaching-mode -s 12 -b 4
 
 # Index + search
-paper2ppt --index-paper -a 2401.12345
-paper2ppt --search "keyframe selection efficiency"
+researchos --index-paper -a 2401.12345
+researchos --search "keyframe selection efficiency"
 
 # Daily research brief
-paper2ppt --daily-brief
+researchos --daily-brief
 ```
 
 ## Streamlit GUI
 Launch the interactive GUI to configure inputs and run the pipeline:
 ```bash
-cd Paper2ppt
+cd ResearchOS
 streamlit run gui_streamlit.py
 ```
 The GUI supports arXiv IDs, local PDFs, PDF directories, PDF URLs, and file uploads.
@@ -245,7 +245,7 @@ You can save a default root directory from the sidebar for future runs.
 For flowchart generation, set `NVIDIA_API_KEY` in your environment.
 
 ## Flowchart & Diagram Generation (Graphviz)
-Paper2ppt can generate **Graphviz flowcharts** for key slides to deepen understanding of methods and system internals.
+ResearchOS can generate **Graphviz flowcharts** for key slides to deepen understanding of methods and system internals.
 The LLM decides the flowchart **structure** (linear/branch/cycle) and **step count** per slide, but you can enforce a **diagram style** to keep visuals consistent across decks.
 - Linear - A straight one-way flow-chart.
 - Branched - Where a cell in the flow-chart can have multiple inputs/outputs.
@@ -255,7 +255,7 @@ By default it targets 3–4 flowcharts in a 10‑slide deck (configurable via CL
 
 To enable:
 ```bash
-paper2ppt -a 1811.12432 --slides 10 --bullets 4 --generate-flowcharts
+researchos -a 1811.12432 --slides 10 --bullets 4 --generate-flowcharts
 ```
 Flowcharts are saved to `outputs/flowcharts/` and included in slides automatically.
 
@@ -297,7 +297,7 @@ These flags make decks more review-ready and diagram-heavy:
 - Extracts concrete numbers from sources into a structured table (Method, Dataset, Metric, Score).
 
 ## Topic-Only Research Mode
-You can start from a topic instead of providing sources. Paper2ppt will:
+You can start from a topic instead of providing sources. ResearchOS will:
 - Expand the topic into a detailed research query
 - Search the web for relevant sources
 - Download available PDFs (arXiv and direct PDF links)
@@ -312,7 +312,7 @@ In this mode, the system behaves like a lightweight research agent:
 
 Example:
 ```bash
-paper2ppt --topic "How has Cross-Attention affected the results generated by Vision Language Models?" --slides 15 --bullets 4 --generate-flowcharts
+researchos --topic "How has Cross-Attention affected the results generated by Vision Language Models?" --slides 15 --bullets 4 --generate-flowcharts
 ```
 
 ### Topic-Only Workflow (Visual)
@@ -380,7 +380,7 @@ Render Beamer LaTeX -> Compile PDF
 9. **Render & compile:** Beamer LaTeX is written and compiled to PDF (if `pdflatex` is available).
 
 ## Multi-PDF and Multi-Source Workflow
-When you provide multiple arXiv IDs and/or multiple PDFs, Paper2ppt:
+When you provide multiple arXiv IDs and/or multiple PDFs, ResearchOS:
 - Parses each source separately
 - Prints a source list with titles and paths/IDs
 - Merges all extracted content into a single summarization pipeline
@@ -398,8 +398,8 @@ Notes:
 - Figure insertion is only supported for a single arXiv source.
 
 ## Default Directories
-By default, Paper2ppt stores all runs under:
-`~/paper2ppt_runs/<paper_title_slug>/`
+By default, ResearchOS stores all runs under:
+`~/researchos_runs/<paper_title_slug>/`
 
 Inside that folder it creates:
 - `work/` for intermediate files (downloaded arXiv source, flattened TeX, extracted PDF images)
@@ -407,7 +407,7 @@ Inside that folder it creates:
 
 Example output structure:
 ```text
-~/paper2ppt_runs/Adaptive_Frame_Interpolation_for_Fast_Video_Processing/
+~/researchos_runs/Adaptive_Frame_Interpolation_for_Fast_Video_Processing/
   work/
     arxiv_1811.12432/...
     pdf_<name>/pdf_images/...
@@ -423,21 +423,21 @@ Example output structure:
 
 Override the default root:
 ```bash
-paper2ppt --root-dir "/path/to/runs" -a 1811.12432 --slides 10 --bullets 4
+researchos --root-dir "/path/to/runs" -a 1811.12432 --slides 10 --bullets 4
 ```
 
 Set a default root once:
 ```bash
-export PAPER2PPT_ROOT_DIR="/path/to/runs"
+export RESEARCHOS_ROOT_DIR="/path/to/runs"
 ```
 
 Override work/output directories directly:
 ```bash
-paper2ppt --work-dir "/tmp/p2p_work" --out-dir "/tmp/p2p_outputs" -a 1811.12432 --slides 10 --bullets 4
+researchos --work-dir "/tmp/p2p_work" --out-dir "/tmp/p2p_outputs" -a 1811.12432 --slides 10 --bullets 4
 ```
 
 Notes on structure:
-- If `--root-dir` or `PAPER2PPT_ROOT_DIR` is used, each run gets its own subfolder named after a slugified paper title.
+- If `--root-dir` or `RESEARCHOS_ROOT_DIR` is used, each run gets its own subfolder named after a slugified paper title.
 - If `--work-dir` or `--out-dir` is set, those paths are used directly and no run subfolder is created.
 - For local PDFs, extracted images are saved under `work/pdf_images/` and their paths are included in the LLM input.
 - For query-guided runs, the user query is saved to `outputs/query.txt` and web sources appear in the References slide.
@@ -484,7 +484,7 @@ Notes on structure:
 - `--auto-comparisons` auto-add comparison slides (e.g., full video vs key frames)
 - `--baseline-framing` add baseline framing bullets on experiment slides
 - `--quant-results` add a quantitative results table slide (numbers pulled from sources)
-- `--root-dir` root directory for all runs (default `$PAPER2PPT_ROOT_DIR` or `~/paper2ppt_runs`)
+- `--root-dir` root directory for all runs (default `$RESEARCHOS_ROOT_DIR` or `~/researchos_runs`)
 - `-wdir`, `--work-dir` working directory (overrides `--root-dir`)
 - `-odir`, `--out-dir` output directory (overrides `--root-dir`)
 - `-msc`, `--max-summary-chunks` cap for LLM summary chunks (default `30`)
@@ -522,7 +522,7 @@ Notes on structure:
 
 ### Title Mismatch Handling
 When the LLM returns the wrong number of slide titles:
-1. Paper2ppt re-prompts the LLM to fix the count.
+1. ResearchOS re-prompts the LLM to fix the count.
 2. If still mismatched and `--interactive` is enabled, it prints the current titles and asks for guidance.
 3. It then retries with your feedback or falls back to padding/truncation to meet the exact count.
 
@@ -573,7 +573,7 @@ Compile PDF
 
 ## Project Directory
 ```text
-Paper2ppt/
+ResearchOS/
   arxiv_utils.py
   llm.py
   logging_utils.py
@@ -619,7 +619,7 @@ Paper2ppt/
 
 ## Maintenance
 - After any version upgrade, run: `pip install -r requirements.txt` from the codebase directory.
-- Paper2ppt auto-installs dependencies when `requirements.txt` changes, but manual updates are safer for reproducibility.
+- ResearchOS auto-installs dependencies when `requirements.txt` changes, but manual updates are safer for reproducibility.
 
 ## Changelog
 See `CHANGELOG.md` for version history and changes.

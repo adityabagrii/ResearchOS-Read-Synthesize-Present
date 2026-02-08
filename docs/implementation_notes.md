@@ -4,7 +4,7 @@ Turns a paper into practical implementation notes.
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --implementation-notes
+researchos -a 2401.12345 --implementation-notes
 ```
 
 **Output**

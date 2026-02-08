@@ -1,10 +1,10 @@
 # Daily Research Brief
 
-Summarizes your Paper2ppt activity for the day into a brief research journal.
+Summarizes your ResearchOS activity for the day into a brief research journal.
 
 **Command**
 ```bash
-paper2ppt --daily-brief
+researchos --daily-brief
 ```
 
 **Output**
@@ -16,5 +16,5 @@ paper2ppt --daily-brief
 - TODOs inferred from your runs
 
 **Notes**
-- The brief is generated from a local journal stored at `~/.paper2ppt/journal.jsonl`.
+- The brief is generated from a local journal stored at `~/.researchos/journal.jsonl`.
 - The journal is updated automatically on each run (slides or non-slide modes).

@@ -4,7 +4,7 @@ Use this for targeted exam prep material from a paper.
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --exam-prep
+researchos -a 2401.12345 --exam-prep
 ```
 
 **Output**

@@ -330,7 +330,7 @@ def beamer_from_outline(outline: DeckOutline) -> str:
         f"""
 \\begin{{frame}}[t]{{}}
 \\centering
-{{\\LARGE Presentation generated using Paper2PPT}}\\\\[0.6em]
+{{\\LARGE Presentation generated using ResearchOS}}\\\\[0.6em]
 {{\\large by Aditya Bagri}}
 \\end{{frame}}
 """.strip()

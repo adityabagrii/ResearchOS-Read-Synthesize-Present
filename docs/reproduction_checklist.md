@@ -4,7 +4,7 @@ Generate a practical checklist for reproducing a paper, including hyperparameter
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --repro-checklist
+researchos -a 2401.12345 --repro-checklist
 ```
 
 **Output**

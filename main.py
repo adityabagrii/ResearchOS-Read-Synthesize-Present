@@ -1,4 +1,4 @@
-"""CLI entrypoint for running the Paper2ppt pipeline from the terminal lists all the arguments that can be passed to the framework for the slide deck generation."""
+"""CLI entrypoint for running the ResearchOS pipeline from the terminal lists all the arguments that can be passed to the framework for the slide deck generation."""
 from __future__ import annotations
 
 import argparse
@@ -28,12 +28,12 @@ except Exception:
     from pipeline import Pipeline, RunConfig
     from memory_utils import append_journal, purge_summary_cache, search_index, today_str
 
-logger = logging.getLogger("paper2ppt")
+logger = logging.getLogger("researchos")
 
 
 def _load_version() -> str:
     try:
-        return metadata.version("paper2ppt")
+        return metadata.version("researchos")
     except Exception:
         return "0.0.0"
 
@@ -76,7 +76,7 @@ def ensure_requirements_installed() -> None:
         logger.debug("requirements.txt not found; skipping auto-install.")
         return
 
-    state_path = Path.home() / ".paper2ppt_requirements.sha256"
+    state_path = Path.home() / ".researchos_requirements.sha256"
     current = _requirements_hash(req_path)
     previous = state_path.read_text(encoding="utf-8").strip() if state_path.exists() else ""
     if current == previous:
@@ -98,18 +98,18 @@ def print_helper() -> None:
     Returns:
         None:
     """
-    print("Paper2ppt help")
+    print("ResearchOS help")
     print("")
     print("Quick start:")
-    print('  paper2ppt --arxiv "https://arxiv.org/abs/2602.05883" --slides 10 --bullets 4')
-    print('  paper2ppt --pdf "/path/to/paper.pdf" --slides 10 --bullets 4')
-    print('  paper2ppt --pdf-url "https://example.com/paper.pdf" --slides 10 --bullets 4')
-    print('  paper2ppt --arxiv 1811.12432 --query "Compare this to prior work" --slides 10 --bullets 4')
-    print('  paper2ppt --arxiv "1811.12432,1707.06347" --slides 10 --bullets 4')
-    print('  paper2ppt --pdf-dir "/path/to/pdfs" --query "Compare methods" --slides 10 --bullets 4')
+    print('  researchos --arxiv "https://arxiv.org/abs/2602.05883" --slides 10 --bullets 4')
+    print('  researchos --pdf "/path/to/paper.pdf" --slides 10 --bullets 4')
+    print('  researchos --pdf-url "https://example.com/paper.pdf" --slides 10 --bullets 4')
+    print('  researchos --arxiv 1811.12432 --query "Compare this to prior work" --slides 10 --bullets 4')
+    print('  researchos --arxiv "1811.12432,1707.06347" --slides 10 --bullets 4')
+    print('  researchos --pdf-dir "/path/to/pdfs" --query "Compare methods" --slides 10 --bullets 4')
     print("")
     print("Defaults:")
-    print("  Root runs dir: ~/paper2ppt_runs or $PAPER2PPT_ROOT_DIR")
+    print("  Root runs dir: ~/researchos_runs or $RESEARCHOS_ROOT_DIR")
     print("  Per-run structure: <root>/<paper_title_slug>/{work,outputs}")
     print("")
     print("Common options:")
@@ -130,7 +130,7 @@ def print_helper() -> None:
     print("  --generate-flowcharts  Generate Graphviz flowcharts for key slides")
     print("")
     print("Full options:")
-    print("  paper2ppt --help")
+    print("  researchos --help")
 
 
 def parse_args() -> argparse.Namespace:
@@ -140,7 +140,7 @@ def parse_args() -> argparse.Namespace:
         argparse.Namespace:
     """
     p = argparse.ArgumentParser(description="Generate a Beamer slide deck from arXiv papers or local PDFs.")
-    p.add_argument("--version", action="version", version=f"paper2ppt {VERSION}")
+    p.add_argument("--version", action="version", version=f"researchos {VERSION}")
     p.add_argument(
         "-a",
         "--arxiv",
@@ -189,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--root-dir",
         default=None,
-        help="Root directory for all runs (default: $PAPER2PPT_ROOT_DIR or ~/paper2ppt_runs)",
+        help="Root directory for all runs (default: $RESEARCHOS_ROOT_DIR or ~/researchos_runs)",
     )
     p.add_argument("--work-dir", "-wdir", default=None, help="Working directory (overrides --root-dir)")
     p.add_argument("--out-dir", "-odir", default=None, help="Output directory (overrides --root-dir)")
@@ -440,7 +440,7 @@ def main() -> int:
             )
             return 2
     else:
-        root_dir = args.root_dir or os.environ.get("PAPER2PPT_ROOT_DIR", "~/paper2ppt_runs")
+        root_dir = args.root_dir or os.environ.get("RESEARCHOS_ROOT_DIR", "~/researchos_runs")
         run_root = Path(root_dir).expanduser().resolve()
         base_name = _slugify(args.name) if args.name else _slugify(paper_title)
         run_name = base_name
@@ -652,12 +652,12 @@ if __name__ == "__main__":
 
 """
 Example Run Command:
-paper2ppt -a "1811.12432, 2404.04346, 2510.13891, 2503.13139, 2502.21271"\
+researchos -a "1811.12432, 2404.04346, 2510.13891, 2503.13139, 2502.21271"\
     -u https://openaccess.thecvf.com/content/CVPR2025/papers/Buch_Flexible_Frame_Selection_for_Efficient_Video_Reasoning_CVPR_2025_paper.pdf\
     -s 15 -b 4 -q "Compare these key frame detection algorithms list their similarities and differences among each other and based on the results from the papers talk about the most efficient approach"\
     -rs 2 -msc 40 -llms -uf -wsn -n "KeyFrameComparisionWithImages" -gi
     
-paper2ppt -t "Dataset report for Key Frame Sampling, with best performers in each dataset"\
+researchos -t "Dataset report for Key Frame Sampling, with best performers in each dataset"\
     -s 16 -b 5\
     -gf -minf 4 -maxf 7\
     -rs 2 -re 2\

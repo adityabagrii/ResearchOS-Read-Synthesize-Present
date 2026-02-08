@@ -4,7 +4,7 @@ Use this when you need to defend ideas, not just present them.
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --viva-mode
+researchos -a 2401.12345 --viva-mode
 ```
 
 **Output**

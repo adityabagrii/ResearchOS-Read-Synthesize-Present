@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 
 def _storage_dir() -> Path:
-    root = Path.home() / ".paper2ppt"
+    root = Path.home() / ".researchos"
     root.mkdir(parents=True, exist_ok=True)
     return root
 

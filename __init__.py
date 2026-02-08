@@ -1,1 +1,1 @@
-"""Paper2ppt package."""
+"""ResearchOS package."""

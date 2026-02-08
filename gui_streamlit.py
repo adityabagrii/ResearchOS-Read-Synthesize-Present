@@ -1,4 +1,4 @@
-"""Streamlit GUI for Paper2ppt."""
+"""Streamlit GUI for ResearchOS."""
 from __future__ import annotations
 
 import json
@@ -20,8 +20,8 @@ from memory_utils import search_index, today_str
 from pipeline import Pipeline, RunConfig
 
 
-APP_TITLE = "Paper2ppt GUI"
-CONFIG_PATH = Path.home() / ".paper2ppt_gui.json"
+APP_TITLE = "ResearchOS GUI"
+CONFIG_PATH = Path.home() / ".researchos_gui.json"
 
 
 class _LogBufferHandler(logging.Handler):
@@ -288,7 +288,7 @@ def main() -> None:
     if "uploads" not in st.session_state:
         st.session_state["uploads"] = []
     if "work_dir" not in st.session_state:
-        st.session_state["work_dir"] = tempfile.mkdtemp(prefix="paper2ppt_gui_")
+        st.session_state["work_dir"] = tempfile.mkdtemp(prefix="researchos_gui_")
     if "gui_config" not in st.session_state:
         st.session_state["gui_config"] = _load_gui_config()
 
@@ -353,7 +353,7 @@ def main() -> None:
         chat_question = st.text_input("Chat question", value="") if mode == "Chat" else ""
 
         default_root = st.session_state["gui_config"].get(
-            "root_dir", str(Path.home() / "paper2ppt_runs")
+            "root_dir", str(Path.home() / "researchos_runs")
         )
         root_dir = st.text_input("Root runs directory", value=default_root)
         if st.button("Save as default root"):
@@ -383,7 +383,7 @@ def main() -> None:
     st.subheader("Output")
     st.write(f"Run directory: {run_dir}")
 
-    if st.button("Run Paper2ppt"):
+    if st.button("Run ResearchOS"):
         if mode not in {"Daily Brief", "Search Index"} and not arxiv_ids and not pdf_paths:
             st.error("Provide at least one source to continue.")
             return
@@ -512,7 +512,7 @@ Context:
 
 Question: {chat_question}
 """.strip()
-                        answer = safe_invoke(logging.getLogger("paper2ppt"), llm, prompt, retries=6).strip()
+                        answer = safe_invoke(logging.getLogger("researchos"), llm, prompt, retries=6).strip()
                         result["chat_answer"] = answer
                 else:
                     if mode == "Slides":

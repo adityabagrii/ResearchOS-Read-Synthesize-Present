@@ -4,7 +4,7 @@ Teaching mode generates slides optimized for pacing and understanding.
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --teaching-mode -s 12 -b 4
+researchos -a 2401.12345 --teaching-mode -s 12 -b 4
 ```
 
 **Behavior**

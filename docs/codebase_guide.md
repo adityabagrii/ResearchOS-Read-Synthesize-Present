@@ -1,9 +1,9 @@
-# Paper2ppt Codebase Guide
+# ResearchOS Codebase Guide
 
-This document is a structured walkthrough of the Paper2ppt codebase: modules, configuration variables, key classes/functions, modes, and common use cases. It is intentionally practical and aligned with the current repo layout.
+This document is a structured walkthrough of the ResearchOS codebase: modules, configuration variables, key classes/functions, modes, and common use cases. It is intentionally practical and aligned with the current repo layout.
 
 ## Purpose
-Paper2ppt turns arXiv papers, local PDFs, PDF URLs, or a topic into a Beamer slide deck or structured markdown notes using LLMs. It supports web search grounding, flowchart/diagram generation, figure insertion (arXiv sources), speaker notes, and several non-slide “reading” modes.
+ResearchOS turns arXiv papers, local PDFs, PDF URLs, or a topic into a Beamer slide deck or structured markdown notes using LLMs. It supports web search grounding, flowchart/diagram generation, figure insertion (arXiv sources), speaker notes, and several non-slide “reading” modes.
 
 ## Repository Layout
 - `main.py`: CLI entrypoint, argument parsing, run directory setup, and orchestration.
@@ -27,7 +27,7 @@ Paper2ppt turns arXiv papers, local PDFs, PDF URLs, or a topic into a Beamer sli
 - `docs/`: Mode guides and usage documentation.
 
 ## Entry Points
-- CLI: `main.py` provides `paper2ppt` command, arguments, and run setup.
+- CLI: `main.py` provides `researchos` command, arguments, and run setup.
 - Python API: `pipeline.Pipeline` and `pipeline.RunConfig` can be imported and used programmatically.
 - GUI: `gui_streamlit.py` launches Streamlit UI for configuration and execution.
 
@@ -91,7 +91,7 @@ RunConfig fields:
 
 Environment variables:
 - `NVIDIA_API_KEY`: required to use ChatNVIDIA LLM.
-- `PAPER2PPT_ROOT_DIR`: default root directory for run outputs.
+- `RESEARCHOS_ROOT_DIR`: default root directory for run outputs.
 
 ## Data Models
 - `models.FlowchartSpec`: steps, structure, caption for a flowchart.
@@ -160,7 +160,7 @@ Typical outputs:
 - When `--query` is set and `--no-web-search` is not set, web sources are appended as citations in outlines and outputs.
 
 ## Caching and Resume
-- `summary_cache.json` in `~/.paper2ppt` stores summaries keyed by hash.
+- `summary_cache.json` in `~/.researchos` stores summaries keyed by hash.
 - `progress.json` tracks current stage, summary, and context to support `--resume`.
 - `paper_context.json` provides lightweight RAG chunks and summary for `--chat` and resume.
 
@@ -171,14 +171,14 @@ Typical outputs:
 - Live log streaming during runs.
 
 ## Common Use Cases
-- Basic arXiv deck: `paper2ppt -a 2401.12345 --slides 12 --bullets 4`
-- Multi-source comparison: `paper2ppt -a 1811.12432 -p /path/paper.pdf --query "Compare methods"`
-- Topic-based research: `paper2ppt --topic "Video summarization" --slides 12`
-- Reading notes: `paper2ppt -a 2401.12345 --read`
-- Viva prep: `paper2ppt -a 2401.12345 --viva-mode`
-- Teaching mode: `paper2ppt -a 2401.12345 --teaching-mode -s 12 -b 4`
-- Index a paper: `paper2ppt --index-paper -a 2401.12345`
-- Chat with a paper: `paper2ppt -a 2401.12345 --chat`
+- Basic arXiv deck: `researchos -a 2401.12345 --slides 12 --bullets 4`
+- Multi-source comparison: `researchos -a 1811.12432 -p /path/paper.pdf --query "Compare methods"`
+- Topic-based research: `researchos --topic "Video summarization" --slides 12`
+- Reading notes: `researchos -a 2401.12345 --read`
+- Viva prep: `researchos -a 2401.12345 --viva-mode`
+- Teaching mode: `researchos -a 2401.12345 --teaching-mode -s 12 -b 4`
+- Index a paper: `researchos --index-paper -a 2401.12345`
+- Chat with a paper: `researchos -a 2401.12345 --chat`
 
 ## Extension Points
 If you want to extend the codebase, the most common entry points are:

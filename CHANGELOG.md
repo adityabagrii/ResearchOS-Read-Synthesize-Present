@@ -114,15 +114,15 @@
 ## 0.2.2 - 2026-02-07
 - README updated with steps to obtain and set NVIDIA API keys.
 - API key check now warns instead of exiting when missing.
-- Added `paper2ppt help` helper command.
+- Added `researchos help` helper command.
 
 ## 0.2.0 - 2026-02-07
-- Added `PAPER2PPT_ROOT_DIR` for a default runs root.
+- Added `RESEARCHOS_ROOT_DIR` for a default runs root.
 - Clarified output directory structure and precedence of `--root-dir`, `--work-dir`, and `--out-dir`.
 
 ## 0.1.0 - 2026-02-07
 - Initial class-based refactor of the original PresentationAgent pipeline.
-- CLI entry point `paper2ppt`.
+- CLI entry point `researchos`.
 - Outline drafts saved to `outline-*.json` in output directory.
 - Run logs saved to `run.log` in output directory.
 - Optional speaker notes (`--with-speaker-notes`, default off).

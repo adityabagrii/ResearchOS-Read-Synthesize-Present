@@ -4,17 +4,17 @@ Use this when you want understanding, not slides. It generates 1–2 pages of st
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --read
+researchos -a 2401.12345 --read
 ```
 
 **With diagrams embedded**
 ```bash
-paper2ppt -a 2401.12345 --read --generate-flowcharts
+researchos -a 2401.12345 --read --generate-flowcharts
 ```
 
 **Intent-aware DAG diagrams**
 ```bash
-paper2ppt -a 2401.12345 --read --generate-flowcharts --diagram-intent-aware --diagram-style dag
+researchos -a 2401.12345 --read --generate-flowcharts --diagram-intent-aware --diagram-style dag
 ```
 Note: `--diagram-intent-aware` and `--diagram-style` only affect diagram generation. To embed images in `reading_notes.md`, you must include `--generate-flowcharts`.
 
@@ -41,7 +41,7 @@ Note: `--diagram-intent-aware` and `--diagram-style` only affect diagram generat
 **Resume Read Mode**
 ```bash
 # Reuse extracted text + summary from a prior run
-paper2ppt --read --resume /path/to/run
+researchos --read --resume /path/to/run
 ```
 - Resume prefers `outputs/paper_context.json` and falls back to `outputs/progress.json`.
 - If the cached summary is missing, rerun without `--resume` to rebuild it.

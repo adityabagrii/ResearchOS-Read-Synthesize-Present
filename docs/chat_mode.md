@@ -4,7 +4,7 @@ Chat with the model about a paper using stored context and semantic retrieval.
 
 **Command**
 ```bash
-paper2ppt -a 2401.12345 --chat
+researchos -a 2401.12345 --chat
 ```
 
 **What it does**

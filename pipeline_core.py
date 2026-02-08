@@ -1999,7 +1999,7 @@ Entries:
 
         console = _get_console()
         if console and Panel:
-            console.print(Panel("Chat mode started. Type a question, or 'exit' to quit.", title="Paper2ppt Chat"))
+            console.print(Panel("Chat mode started. Type a question, or 'exit' to quit.", title="ResearchOS Chat"))
         else:
             print("\nChat mode started. Type a question, or 'exit' to quit.\n")
         while True:

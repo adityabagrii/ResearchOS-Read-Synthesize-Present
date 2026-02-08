@@ -11,7 +11,7 @@ try:
 except Exception:
     from models import DeckOutline
 
-logger = logging.getLogger("paper2ppt")
+logger = logging.getLogger("researchos")
 TQDM_NCOLS = 100
 
 
