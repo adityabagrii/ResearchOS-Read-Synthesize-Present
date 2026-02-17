@@ -1,1 +1,2 @@
 """ResearchOS package."""
+"CHECK"
